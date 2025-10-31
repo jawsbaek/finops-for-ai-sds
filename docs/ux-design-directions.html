@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinOps for AI - 디자인 방향 탐색</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+            background: #0a0a0a;
+            color: #e5e5e5;
+        }
+
+        /* Navigation */
+        .nav-header {
+            background: #0f0a1a;
+            border-bottom: 1px solid #1e1b29;
+            padding: 20px 40px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav-content {
+            max-width: 1600px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .nav-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .nav-btn {
+            padding: 8px 16px;
+            background: #1e1b29;
+            border: 1px solid #312d40;
+            border-radius: 6px;
+            color: #a5a0b8;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .nav-btn:hover {
+            background: #312d40;
+            color: #ffffff;
+        }
+
+        .nav-btn.active {
+            background: #6366f1;
+            border-color: #6366f1;
+            color: #ffffff;
+        }
+
+        .direction-counter {
+            font-size: 14px;
+            color: #a5a0b8;
+            padding: 0 16px;
+        }
+
+        /* Main Container */
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 40px;
+        }
+
+        .direction-wrapper {
+            display: none;
+        }
+
+        .direction-wrapper.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .direction-header {
+            margin-bottom: 32px;
+        }
+
+        .direction-name {
+            font-size: 32px;
+            font-weight: 700;
+            color: #6366f1;
+            margin-bottom: 8px;
+        }
+
+        .direction-philosophy {
+            font-size: 16px;
+            color: #a5a0b8;
+            margin-bottom: 16px;
+        }
+
+        .direction-tags {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .tag {
+            padding: 6px 12px;
+            background: #1e1b29;
+            border-radius: 16px;
+            font-size: 12px;
+            color: #a5a0b8;
+        }
+
+        /* Mockup Frame */
+        .mockup-frame {
+            background: #0f0a1a;
+            border-radius: 12px;
+            border: 1px solid #1e1b29;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+
+        /* Browser Chrome */
+        .browser-chrome {
+            background: #1e1b29;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid #312d40;
+        }
+
+        .chrome-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #312d40;
+        }
+
+        .chrome-dot.red { background: #ef4444; }
+        .chrome-dot.yellow { background: #f59e0b; }
+        .chrome-dot.green { background: #10b981; }
+
+        .chrome-url {
+            flex: 1;
+            margin-left: 12px;
+            padding: 6px 12px;
+            background: #0f0a1a;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        /* Dashboard Layouts */
+        .dashboard {
+            min-height: 800px;
+            background: #0f0a1a;
+        }
+
+        /* Direction 1: Command Center */
+        .direction-1 .dashboard {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            height: 800px;
+        }
+
+        .sidebar {
+            background: #1e1b29;
+            padding: 24px;
+            border-right: 1px solid #312d40;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 700;
+            color: #6366f1;
+            margin-bottom: 32px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-item {
+            padding: 12px 16px;
+            margin-bottom: 4px;
+            border-radius: 6px;
+            color: #a5a0b8;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .nav-item:hover {
+            background: #312d40;
+            color: #ffffff;
+        }
+
+        .nav-item.active {
+            background: rgba(99, 102, 241, 0.1);
+            color: #6366f1;
+        }
+
+        .main-content {
+            padding: 32px;
+            overflow-y: auto;
+        }
+
+        .page-header {
+            margin-bottom: 32px;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 8px;
+        }
+
+        .page-subtitle {
+            font-size: 14px;
+            color: #a5a0b8;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: #1e1b29;
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid #312d40;
+            transition: all 0.2s;
+        }
+
+        .stat-card:hover {
+            border-color: #6366f1;
+            transform: translateY(-2px);
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #a5a0b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 8px;
+        }
+
+        .stat-value.primary { color: #6366f1; }
+        .stat-value.success { color: #10b981; }
+        .stat-value.warning { color: #f59e0b; }
+        .stat-value.error { color: #ef4444; }
+
+        .stat-change {
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .stat-change.positive { color: #10b981; }
+        .stat-change.negative { color: #ef4444; }
+
+        .alert-banner {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid #ef4444;
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .alert-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .alert-icon {
+            width: 20px;
+            height: 20px;
+            color: #ef4444;
+        }
+
+        .alert-text {
+            color: #ef4444;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .alert-btn {
+            padding: 8px 16px;
+            background: #ef4444;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .alert-btn:hover {
+            background: #dc2626;
+        }
+
+        .chart-card {
+            background: #1e1b29;
+            border-radius: 8px;
+            padding: 24px;
+            border: 1px solid #312d40;
+            margin-bottom: 24px;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .chart-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .chart-legend {
+            display: flex;
+            gap: 16px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #a5a0b8;
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .chart-placeholder {
+            height: 240px;
+            background: linear-gradient(180deg, rgba(99, 102, 241, 0.1) 0%, transparent 100%);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #5b5570;
+            font-size: 13px;
+        }
+
+        /* Direction 2: Minimal Focus */
+        .direction-2 .dashboard {
+            padding: 48px;
+        }
+
+        .direction-2 .top-nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 48px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid #1e1b29;
+        }
+
+        .direction-2 .logo {
+            margin: 0;
+        }
+
+        .direction-2 .nav-links {
+            display: flex;
+            gap: 32px;
+        }
+
+        .direction-2 .nav-link {
+            color: #a5a0b8;
+            font-size: 14px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .direction-2 .nav-link:hover,
+        .direction-2 .nav-link.active {
+            color: #6366f1;
+        }
+
+        .direction-2 .hero-stat {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        .direction-2 .hero-label {
+            font-size: 14px;
+            color: #a5a0b8;
+            margin-bottom: 12px;
+        }
+
+        .direction-2 .hero-value {
+            font-size: 64px;
+            font-weight: 700;
+            color: #6366f1;
+            margin-bottom: 8px;
+        }
+
+        .direction-2 .hero-change {
+            font-size: 16px;
+            color: #10b981;
+        }
+
+        /* Direction 3: Data Dense */
+        .direction-3 .dashboard {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+        }
+
+        .direction-3 .compact-sidebar {
+            background: #1e1b29;
+            padding: 16px;
+            border-right: 1px solid #312d40;
+        }
+
+        .direction-3 .nav-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 8px;
+            background: #312d40;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .direction-3 .nav-icon:hover {
+            background: rgba(99, 102, 241, 0.2);
+        }
+
+        .direction-3 .nav-icon.active {
+            background: #6366f1;
+        }
+
+        .direction-3 .dense-content {
+            padding: 20px;
+        }
+
+        .direction-3 .stats-grid {
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .direction-3 .stat-card {
+            padding: 14px;
+        }
+
+        .direction-3 .stat-value {
+            font-size: 24px;
+        }
+
+        /* Direction 4: Action First */
+        .direction-4 .dashboard {
+            padding: 32px;
+        }
+
+        .direction-4 .action-panel {
+            background: rgba(99, 102, 241, 0.1);
+            border: 2px solid #6366f1;
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 32px;
+            text-align: center;
+        }
+
+        .direction-4 .action-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 12px;
+        }
+
+        .direction-4 .action-description {
+            font-size: 14px;
+            color: #a5a0b8;
+            margin-bottom: 24px;
+        }
+
+        .direction-4 .action-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        .btn-primary {
+            padding: 12px 24px;
+            background: #6366f1;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary:hover {
+            background: #4f46e5;
+        }
+
+        .btn-secondary {
+            padding: 12px 24px;
+            background: transparent;
+            color: #6366f1;
+            border: 1px solid #6366f1;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .direction-1 .dashboard {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                display: none;
+            }
+
+            .direction-2 .hero-value {
+                font-size: 42px;
+            }
+
+            .direction-3 .dashboard {
+                grid-template-columns: 1fr;
+            }
+
+            .direction-3 .compact-sidebar {
+                display: none;
+            }
+        }
+
+        /* Comparison Mode */
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+
+        .comparison-grid .mockup-frame {
+            transform: scale(0.8);
+            transform-origin: top;
+        }
+
+        /* Footer Notes */
+        .direction-notes {
+            margin-top: 32px;
+            padding: 24px;
+            background: #1e1b29;
+            border-radius: 8px;
+            border: 1px solid #312d40;
+        }
+
+        .notes-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 12px;
+        }
+
+        .notes-list {
+            list-style: none;
+        }
+
+        .notes-list li {
+            font-size: 14px;
+            color: #a5a0b8;
+            margin-bottom: 8px;
+            padding-left: 20px;
+            position: relative;
+        }
+
+        .notes-list li:before {
+            content: "→";
+            position: absolute;
+            left: 0;
+            color: #6366f1;
+        }
+    </style>
+</head>
+<body>
+    <div class="nav-header">
+        <div class="nav-content">
+            <div class="nav-title">🎨 FinOps for AI - 디자인 방향 탐색</div>
+            <div class="nav-controls">
+                <button class="nav-btn" onclick="prevDirection()">← 이전</button>
+                <span class="direction-counter"><span id="current">1</span> / 6</span>
+                <button class="nav-btn" onclick="nextDirection()">다음 →</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Direction 1: Command Center -->
+        <div class="direction-wrapper direction-1 active" data-direction="1">
+            <div class="direction-header">
+                <h1 class="direction-name">1. Command Center - 통제실</h1>
+                <p class="direction-philosophy">사이드바 네비게이션 + 정보 밀도 높은 대시보드. Datadog 스타일의 전통적이지만 강력한 레이아웃.</p>
+                <div class="direction-tags">
+                    <span class="tag">사이드바 네비게이션</span>
+                    <span class="tag">정보 밀집형</span>
+                    <span class="tag">데스크톱 우선</span>
+                    <span class="tag">파워 유저용</span>
+                </div>
+            </div>
+
+            <div class="mockup-frame">
+                <div class="browser-chrome">
+                    <div class="chrome-dot red"></div>
+                    <div class="chrome-dot yellow"></div>
+                    <div class="chrome-dot green"></div>
+                    <div class="chrome-url">https://finops-ai.app/dashboard</div>
+                </div>
+
+                <div class="dashboard">
+                    <div class="sidebar">
+                        <div class="logo">⚡ FinOps AI</div>
+                        <div class="nav-item active">📊 대시보드</div>
+                        <div class="nav-item">🔔 알림</div>
+                        <div class="nav-item">📁 프로젝트</div>
+                        <div class="nav-item">👥 팀 관리</div>
+                        <div class="nav-item">⚙️ 설정</div>
+                    </div>
+
+                    <div class="main-content">
+                        <div class="page-header">
+                            <h1 class="page-title">AI 비용 대시보드</h1>
+                            <p class="page-subtitle">전체 조직의 AI 비용을 실시간으로 모니터링하세요</p>
+                        </div>
+
+                        <div class="alert-banner">
+                            <div class="alert-content">
+                                <span class="alert-icon">⚠️</span>
+                                <span class="alert-text">마케팅팀 일일 한도 $500 초과 - 현재 $742 (148%)</span>
+                            </div>
+                            <button class="alert-btn">즉시 차단</button>
+                        </div>
+
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-label">오늘 총 비용</div>
+                                <div class="stat-value primary">$47,234</div>
+                                <div class="stat-change positive">↑ 12% 전일 대비</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">이번 주</div>
+                                <div class="stat-value">$284,920</div>
+                                <div class="stat-change negative">↓ 3% 전주 대비</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">이번 달</div>
+                                <div class="stat-value">$1.2M</div>
+                                <div class="stat-change positive">↑ 18% 전월 대비</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">예산 소진율</div>
+                                <div class="stat-value warning">67%</div>
+                                <div class="stat-change">15일 남음</div>
+                            </div>
+                        </div>
+
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <div class="chart-title">비용 추이 (최근 7일)</div>
+                                <div class="chart-legend">
+                                    <div class="legend-item">
+                                        <span class="legend-dot" style="background: #6366f1;"></span>
+                                        OpenAI
+                                    </div>
+                                    <div class="legend-item">
+                                        <span class="legend-dot" style="background: #10b981;"></span>
+                                        AWS
+                                    </div>
+                                    <div class="legend-item">
+                                        <span class="legend-dot" style="background: #f59e0b;"></span>
+                                        Azure
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chart-placeholder">📈 차트 영역 (Recharts 라이브러리)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="direction-notes">
+                <h3 class="notes-title">💡 이 방향의 특징</h3>
+                <ul class="notes-list">
+                    <li><strong>장점:</strong> 많은 정보를 한 화면에 표시, 빠른 네비게이션, 파워 유저에게 익숙</li>
+                    <li><strong>단점:</strong> 모바일에서 사이드바 숨김 필요, 정보 과부하 가능성</li>
+                    <li><strong>적합:</strong> FinOps 전문가, 매일 사용하는 파워 유저, 데스크톱 중심 업무</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Direction 2: Minimal Focus -->
+        <div class="direction-wrapper direction-2" data-direction="2">
+            <div class="direction-header">
+                <h1 class="direction-name">2. Minimal Focus - 미니멀 집중</h1>
+                <p class="direction-philosophy">Linear 스타일의 극도로 깔끔한 디자인. 하나의 핵심 메트릭에 집중하고 나머지는 최소화.</p>
+                <div class="direction-tags">
+                    <span class="tag">톱 네비게이션</span>
+                    <span class="tag">여백 많음</span>
+                    <span class="tag">단순 명료</span>
+                    <span class="tag">경영진 친화적</span>
+                </div>
+            </div>
+
+            <div class="mockup-frame">
+                <div class="browser-chrome">
+                    <div class="chrome-dot red"></div>
+                    <div class="chrome-dot yellow"></div>
+                    <div class="chrome-dot green"></div>
+                    <div class="chrome-url">https://finops-ai.app/dashboard</div>
+                </div>
+
+                <div class="dashboard">
+                    <div class="top-nav">
+                        <div class="logo">⚡ FinOps AI</div>
+                        <div class="nav-links">
+                            <span class="nav-link active">대시보드</span>
+                            <span class="nav-link">프로젝트</span>
+                            <span class="nav-link">알림</span>
+                        </div>
+                    </div>
+
+                    <div class="hero-stat">
+                        <div class="hero-label">오늘의 AI 비용</div>
+                        <div class="hero-value">$47,234</div>
+                        <div class="hero-change">↓ $3,142 절감 (예상 대비)</div>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">가장 비용 효율적</div>
+                            <div class="stat-value success">Chatbot v2</div>
+                            <div class="stat-change">$0.004 / 요청</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">개선 필요</div>
+                            <div class="stat-value error">Image Gen</div>
+                            <div class="stat-change">$0.23 / 요청</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">이번 주 절감</div>
+                            <div class="stat-value success">$12,400</div>
+                            <div class="stat-change">목표 대비 124%</div>
+                        </div>
+                    </div>
+
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <div class="chart-title">주간 비용 트렌드</div>
+                        </div>
+                        <div class="chart-placeholder">📊 미니멀 라인 차트</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="direction-notes">
+                <h3 class="notes-title">💡 이 방향의 특징</h3>
+                <ul class="notes-list">
+                    <li><strong>장점:</strong> 혼란 없이 명확, 경영진/비기술팀 친화적, 모바일 최적화 용이</li>
+                    <li><strong>단점:</strong> 상세 정보 접근에 클릭 더 필요, 파워 유저에게는 너무 단순</li>
+                    <li><strong>적합:</strong> C-레벨, PM, 가끔 확인하는 사용자, 모바일 중심</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Direction 3: Data Dense Pro -->
+        <div class="direction-wrapper direction-3" data-direction="3">
+            <div class="direction-header">
+                <h1 class="direction-name">3. Data Dense Pro - 데이터 밀집형</h1>
+                <p class="direction-philosophy">최대한 많은 정보를 효율적으로 배치. 아이콘 네비로 공간 절약.</p>
+                <div class="direction-tags">
+                    <span class="tag">컴팩트 사이드바</span>
+                    <span class="tag">초고밀도</span>
+                    <span class="tag">효율 극대화</span>
+                    <span class="tag">전문가용</span>
+                </div>
+            </div>
+
+            <div class="mockup-frame">
+                <div class="browser-chrome">
+                    <div class="chrome-dot red"></div>
+                    <div class="chrome-dot yellow"></div>
+                    <div class="chrome-dot green"></div>
+                    <div class="chrome-url">https://finops-ai.app/dashboard</div>
+                </div>
+
+                <div class="dashboard">
+                    <div class="compact-sidebar">
+                        <div class="nav-icon active">📊</div>
+                        <div class="nav-icon">🔔</div>
+                        <div class="nav-icon">📁</div>
+                        <div class="nav-icon">👥</div>
+                        <div class="nav-icon">⚙️</div>
+                    </div>
+
+                    <div class="dense-content">
+                        <div class="page-header">
+                            <h1 class="page-title">AI Cost Overview</h1>
+                        </div>
+
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-label">Today</div>
+                                <div class="stat-value primary">$47.2K</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Week</div>
+                                <div class="stat-value">$284.9K</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Month</div>
+                                <div class="stat-value">$1.2M</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Budget</div>
+                                <div class="stat-value warning">67%</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Alerts</div>
+                                <div class="stat-value error">3</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Projects</div>
+                                <div class="stat-value">24</div>
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+                            <div class="chart-card" style="margin-bottom: 0;">
+                                <div class="chart-header">
+                                    <div class="chart-title">Cost Trend</div>
+                                </div>
+                                <div class="chart-placeholder" style="height: 180px;">📈 Chart</div>
+                            </div>
+
+                            <div class="chart-card" style="margin-bottom: 0;">
+                                <div class="chart-header">
+                                    <div class="chart-title">Top Projects</div>
+                                </div>
+                                <div style="padding: 12px 0;">
+                                    <div style="padding: 8px 0; color: #a5a0b8; font-size: 13px; display: flex; justify-content: space-between;">
+                                        <span>Chatbot</span>
+                                        <span style="color: #6366f1;">$12.4K</span>
+                                    </div>
+                                    <div style="padding: 8px 0; color: #a5a0b8; font-size: 13px; display: flex; justify-content: space-between;">
+                                        <span>Image Gen</span>
+                                        <span style="color: #6366f1;">$9.2K</span>
+                                    </div>
+                                    <div style="padding: 8px 0; color: #a5a0b8; font-size: 13px; display: flex; justify-content: space-between;">
+                                        <span>Analytics</span>
+                                        <span style="color: #6366f1;">$7.8K</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="direction-notes">
+                <h3 class="notes-title">💡 이 방향의 특징</h3>
+                <ul class="notes-list">
+                    <li><strong>장점:</strong> 화면 공간 최대 활용, 빠른 정보 스캔, 전문가에게 효율적</li>
+                    <li><strong>단점:</strong> 초보자에게 부담, 모바일 어려움, 시각적 혼잡 가능</li>
+                    <li><strong>적합:</strong> 숙련된 FinOps 팀, 멀티모니터 환경, 데이터 분석가</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Direction 4: Action First Dashboard -->
+        <div class="direction-wrapper direction-4" data-direction="4">
+            <div class="direction-header">
+                <h1 class="direction-name">4. Action First - 행동 우선</h1>
+                <p class="direction-philosophy">PRD의 "행동 우선" 원칙을 극대화. 다음 할 일이 화면 중앙에.</p>
+                <div class="direction-tags">
+                    <span class="tag">행동 중심</span>
+                    <span class="tag">CTA 강조</span>
+                    <span class="tag">작업 기반</span>
+                    <span class="tag">초보자 친화적</span>
+                </div>
+            </div>
+
+            <div class="mockup-frame">
+                <div class="browser-chrome">
+                    <div class="chrome-dot red"></div>
+                    <div class="chrome-dot yellow"></div>
+                    <div class="chrome-dot green"></div>
+                    <div class="chrome-url">https://finops-ai.app/dashboard</div>
+                </div>
+
+                <div class="dashboard">
+                    <div class="top-nav">
+                        <div class="logo">⚡ FinOps AI</div>
+                        <div class="nav-links">
+                            <span class="nav-link active">홈</span>
+                            <span class="nav-link">작업</span>
+                            <span class="nav-link">리포트</span>
+                        </div>
+                    </div>
+
+                    <div class="action-panel">
+                        <div class="action-title">🚨 즉시 조치 필요</div>
+                        <div class="action-description">
+                            마케팅팀이 일일 예산 $500을 초과했습니다 ($742, 148%)<br>
+                            무한 루프 버그로 의심됩니다. API 키를 차단하시겠습니까?
+                        </div>
+                        <div class="action-buttons">
+                            <button class="btn-primary">즉시 차단</button>
+                            <button class="btn-secondary">팀에 알림</button>
+                            <button class="btn-secondary">상세 보기</button>
+                        </div>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">오늘 총 비용</div>
+                            <div class="stat-value">$47,234</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">이번 주 절감</div>
+                            <div class="stat-value success">$12,400</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">조치 필요</div>
+                            <div class="stat-value error">3개 프로젝트</div>
+                        </div>
+                    </div>
+
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <div class="chart-title">다음 작업</div>
+                        </div>
+                        <div style="padding: 16px 0;">
+                            <div style="padding: 12px 16px; background: rgba(239, 68, 68, 0.1); border-radius: 6px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="color: #ef4444; font-weight: 600; margin-bottom: 4px;">Image Gen 프로젝트 검토</div>
+                                    <div style="color: #a5a0b8; font-size: 13px;">비용 효율 낮음 - 최적화 필요</div>
+                                </div>
+                                <button class="btn-secondary" style="border-color: #ef4444; color: #ef4444;">검토</button>
+                            </div>
+                            <div style="padding: 12px 16px; background: rgba(245, 158, 11, 0.1); border-radius: 6px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="color: #f59e0b; font-weight: 600; margin-bottom: 4px;">주간 리포트 확인</div>
+                                    <div style="color: #a5a0b8; font-size: 13px;">Top 3 / Bottom 3 프로젝트 분석</div>
+                                </div>
+                                <button class="btn-secondary" style="border-color: #f59e0b; color: #f59e0b;">확인</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="direction-notes">
+                <h3 class="notes-title">💡 이 방향의 특징</h3>
+                <ul class="notes-list">
+                    <li><strong>장점:</strong> "다음 할 일" 명확, 초보자 친화적, 긴급 상황 대응 최적화</li>
+                    <li><strong>단점:</strong> 전체 데이터 보기 어려움, 파워 유저에게는 제한적</li>
+                    <li><strong>적합:</strong> 신규 사용자, 작업 중심 팀, 긴급 대응 시나리오</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Direction 5: Split View -->
+        <div class="direction-wrapper direction-5" data-direction="5">
+            <div class="direction-header">
+                <h1 class="direction-name">5. Split View - 분할 뷰</h1>
+                <p class="direction-philosophy">개요(왼쪽) + 상세(오른쪽) 동시 표시. 컨텍스트 전환 최소화.</p>
+                <div class="direction-tags">
+                    <span class="tag">분할 레이아웃</span>
+                    <span class="tag">동시 보기</span>
+                    <span class="tag">컨텍스트 유지</span>
+                    <span class="tag">중급 사용자용</span>
+                </div>
+            </div>
+
+            <div class="mockup-frame">
+                <div class="browser-chrome">
+                    <div class="chrome-dot red"></div>
+                    <div class="chrome-dot yellow"></div>
+                    <div class="chrome-dot green"></div>
+                    <div class="chrome-url">https://finops-ai.app/dashboard</div>
+                </div>
+
+                <div class="dashboard">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; height: 800px;">
+                        <!-- Left Panel -->
+                        <div style="padding: 32px; border-right: 1px solid #1e1b29; overflow-y: auto;">
+                            <div class="page-header">
+                                <h1 class="page-title">전체 개요</h1>
+                                <p class="page-subtitle">조직의 AI 비용 현황</p>
+                            </div>
+
+                            <div class="stat-card" style="margin-bottom: 20px;">
+                                <div class="stat-label">오늘 총 비용</div>
+                                <div class="stat-value primary">$47,234</div>
+                                <div class="stat-change positive">↑ 12% 전일 대비</div>
+                            </div>
+
+                            <div class="chart-card">
+                                <div class="chart-header">
+                                    <div class="chart-title">비용 추이</div>
+                                </div>
+                                <div class="chart-placeholder" style="height: 180px;">📈</div>
+                            </div>
+
+                            <div style="margin-top: 24px;">
+                                <div style="font-size: 14px; font-weight: 600; color: #ffffff; margin-bottom: 12px;">프로젝트 목록</div>
+                                <div style="padding: 12px; background: rgba(99, 102, 241, 0.1); border-radius: 6px; margin-bottom: 8px; cursor: pointer; border: 1px solid #6366f1;">
+                                    <div style="font-weight: 600; color: #6366f1; margin-bottom: 4px;">마케팅팀 Chatbot</div>
+                                    <div style="font-size: 13px; color: #a5a0b8;">$742 오늘 • 한도 초과</div>
+                                </div>
+                                <div style="padding: 12px; background: #1e1b29; border-radius: 6px; margin-bottom: 8px; cursor: pointer;">
+                                    <div style="font-weight: 600; color: #ffffff; margin-bottom: 4px;">Image Generation</div>
+                                    <div style="font-size: 13px; color: #a5a0b8;">$234 오늘 • 정상</div>
+                                </div>
+                                <div style="padding: 12px; background: #1e1b29; border-radius: 6px; cursor: pointer;">
+                                    <div style="font-weight: 600; color: #ffffff; margin-bottom: 4px;">Analytics Engine</div>
+                                    <div style="font-size: 13px; color: #a5a0b8;">$156 오늘 • 정상</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Panel -->
+                        <div style="padding: 32px; overflow-y: auto; background: #1e1b29;">
+                            <div class="page-header">
+                                <h1 class="page-title">마케팅팀 Chatbot</h1>
+                                <p class="page-subtitle">상세 정보 및 조치</p>
+                            </div>
+
+                            <div class="alert-banner">
+                                <div class="alert-content">
+                                    <span class="alert-icon">⚠️</span>
+                                    <span class="alert-text">일일 한도 $500 초과</span>
+                                </div>
+                                <button class="alert-btn">차단</button>
+                            </div>
+
+                            <div class="stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-label">오늘</div>
+                                    <div class="stat-value error">$742</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-label">이번 주</div>
+                                    <div class="stat-value">$2,340</div>
+                                </div>
+                            </div>
+
+                            <div class="chart-card">
+                                <div class="chart-header">
+                                    <div class="chart-title">시간별 비용</div>
+                                </div>
+                                <div class="chart-placeholder" style="height: 160px;">📊</div>
+                            </div>
+
+                            <div style="margin-top: 20px;">
+                                <div style="padding: 16px; background: rgba(239, 68, 68, 0.1); border-radius: 6px; border: 1px solid #ef4444;">
+                                    <div style="color: #ef4444; font-weight: 600; margin-bottom: 8px;">⚠️ 이상 징후 감지</div>
+                                    <div style="color: #a5a0b8; font-size: 13px; line-height: 1.6;">
+                                        • API 호출 수가 평소의 15배 급증<br>
+                                        • 무한 루프 재시도 로직 의심<br>
+                                        • 14:23부터 비정상 패턴 시작
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="direction-notes">
+                <h3 class="notes-title">💡 이 방향의 특징</h3>
+                <ul class="notes-list">
+                    <li><strong>장점:</strong> 컨텍스트 유지, 빠른 드릴다운, 비교 분석 용이</li>
+                    <li><strong>단점:</strong> 화면 분할로 각 영역 좁음, 모바일 어려움, 넓은 화면 필요</li>
+                    <li><strong>적합:</strong> 데스크톱 파워 유저, 상세 분석 필요 시, 멀티태스킹</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Direction 6: Mobile First -->
+        <div class="direction-wrapper direction-6" data-direction="6">
+            <div class="direction-header">
+                <h1 class="direction-name">6. Mobile First - 모바일 우선</h1>
+                <p class="direction-philosophy">모바일 최적화를 최우선. 한 손으로 조작 가능한 UI.</p>
+                <div class="direction-tags">
+                    <span class="tag">모바일 최적화</span>
+                    <span class="tag">터치 친화적</span>
+                    <span class="tag">바텀 네비</span>
+                    <span class="tag">이동 중 사용</span>
+                </div>
+            </div>
+
+            <div class="mockup-frame" style="max-width: 420px; margin: 0 auto;">
+                <div class="browser-chrome">
+                    <div class="chrome-dot red"></div>
+                    <div class="chrome-dot yellow"></div>
+                    <div class="chrome-dot green"></div>
+                    <div class="chrome-url">finops-ai.app</div>
+                </div>
+
+                <div class="dashboard" style="height: 800px; padding: 20px 16px 80px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                        <div class="logo" style="margin: 0; font-size: 18px;">⚡ FinOps</div>
+                        <div style="width: 40px; height: 40px; background: #1e1b29; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                            🔔
+                        </div>
+                    </div>
+
+                    <div class="alert-banner" style="margin-bottom: 20px;">
+                        <div style="flex: 1;">
+                            <div style="color: #ef4444; font-weight: 600; margin-bottom: 4px;">한도 초과</div>
+                            <div style="color: #ef4444; font-size: 12px;">마케팅팀 $742</div>
+                        </div>
+                        <button class="alert-btn" style="padding: 8px 12px; font-size: 12px;">차단</button>
+                    </div>
+
+                    <div class="stat-card" style="margin-bottom: 16px; text-align: center; padding: 24px;">
+                        <div class="stat-label">오늘 총 비용</div>
+                        <div class="stat-value primary" style="font-size: 42px;">$47,234</div>
+                        <div class="stat-change positive">↑ 12% 전일 대비</div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
+                        <div class="stat-card" style="padding: 16px;">
+                            <div class="stat-label">이번 주</div>
+                            <div class="stat-value" style="font-size: 20px;">$285K</div>
+                        </div>
+                        <div class="stat-card" style="padding: 16px;">
+                            <div class="stat-label">예산</div>
+                            <div class="stat-value warning" style="font-size: 20px;">67%</div>
+                        </div>
+                    </div>
+
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <div class="chart-title" style="font-size: 14px;">비용 추이</div>
+                        </div>
+                        <div class="chart-placeholder" style="height: 140px;">📈</div>
+                    </div>
+
+                    <!-- Bottom Navigation -->
+                    <div style="position: fixed; bottom: 0; left: 0; right: 0; background: #1e1b29; border-top: 1px solid #312d40; display: flex; justify-content: space-around; padding: 12px 0; z-index: 50;">
+                        <div style="text-align: center; cursor: pointer;">
+                            <div style="font-size: 24px; margin-bottom: 4px; color: #6366f1;">📊</div>
+                            <div style="font-size: 10px; color: #6366f1; font-weight: 600;">홈</div>
+                        </div>
+                        <div style="text-align: center; cursor: pointer;">
+                            <div style="font-size: 24px; margin-bottom: 4px; color: #a5a0b8;">📁</div>
+                            <div style="font-size: 10px; color: #a5a0b8;">프로젝트</div>
+                        </div>
+                        <div style="text-align: center; cursor: pointer;">
+                            <div style="font-size: 24px; margin-bottom: 4px; color: #a5a0b8;">🔔</div>
+                            <div style="font-size: 10px; color: #a5a0b8;">알림</div>
+                        </div>
+                        <div style="text-align: center; cursor: pointer;">
+                            <div style="font-size: 24px; margin-bottom: 4px; color: #a5a0b8;">⚙️</div>
+                            <div style="font-size: 10px; color: #a5a0b8;">설정</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="direction-notes">
+                <h3 class="notes-title">💡 이 방향의 특징</h3>
+                <ul class="notes-list">
+                    <li><strong>장점:</strong> 이동 중 사용 최적화, 한 손 조작, 긴급 조치 빠름</li>
+                    <li><strong>단점:</strong> 복잡한 분석 어려움, 데스크톱에서는 비효율</li>
+                    <li><strong>적합:</strong> 경영진, 이동 중 모니터링, 긴급 알림 대응</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentDirection = 1;
+        const totalDirections = 6;
+
+        function showDirection(n) {
+            document.querySelectorAll('.direction-wrapper').forEach(el => {
+                el.classList.remove('active');
+            });
+            document.querySelector(`.direction-wrapper[data-direction="${n}"]`).classList.add('active');
+            document.getElementById('current').textContent = n;
+            currentDirection = n;
+        }
+
+        function nextDirection() {
+            if (currentDirection < totalDirections) {
+                showDirection(currentDirection + 1);
+            }
+        }
+
+        function prevDirection() {
+            if (currentDirection > 1) {
+                showDirection(currentDirection - 1);
+            }
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') nextDirection();
+            if (e.key === 'ArrowLeft') prevDirection();
+        });
+    </script>
+</body>
+</html>

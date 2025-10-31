@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinOps for AI - 컬러 테마 탐색</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+            background: #0a0a0a;
+            color: #e5e5e5;
+            padding: 40px 20px;
+        }
+
+        .header {
+            max-width: 1400px;
+            margin: 0 auto 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: #ffffff;
+        }
+
+        .header p {
+            font-size: 16px;
+            color: #a0a0a0;
+            line-height: 1.6;
+        }
+
+        .theme-grid {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 32px;
+        }
+
+        .theme-card {
+            background: #151515;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #2a2a2a;
+            transition: transform 0.2s, border-color 0.2s;
+            cursor: pointer;
+        }
+
+        .theme-card:hover {
+            transform: translateY(-4px);
+            border-color: #3a3a3a;
+        }
+
+        .theme-header {
+            padding: 24px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        .theme-name {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .theme-description {
+            font-size: 14px;
+            color: #a0a0a0;
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+
+        .theme-personality {
+            font-size: 13px;
+            color: #737373;
+            font-weight: 500;
+        }
+
+        .palette-section {
+            padding: 24px;
+        }
+
+        .palette-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #737373;
+            margin-bottom: 12px;
+        }
+
+        .color-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .color-swatch {
+            flex: 1;
+            min-height: 60px;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            padding: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            transition: transform 0.15s;
+        }
+
+        .color-swatch:hover {
+            transform: scale(1.05);
+        }
+
+        .color-label {
+            font-size: 10px;
+            opacity: 0.8;
+            margin-bottom: 2px;
+        }
+
+        .components-section {
+            padding: 24px;
+            border-top: 1px solid #2a2a2a;
+        }
+
+        .component-example {
+            margin-bottom: 16px;
+        }
+
+        .btn {
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.15s;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+
+        .card {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 8px;
+            border-left: 3px solid;
+        }
+
+        .stat-card {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #737373;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .comparison-note {
+            max-width: 1400px;
+            margin: 40px auto 0;
+            padding: 24px;
+            background: #151515;
+            border-radius: 12px;
+            border: 1px solid #2a2a2a;
+        }
+
+        .comparison-note h3 {
+            font-size: 18px;
+            margin-bottom: 12px;
+            color: #ffffff;
+        }
+
+        .comparison-note p {
+            font-size: 14px;
+            color: #a0a0a0;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+
+        /* Theme 1: Trust Blue - 신뢰와 안정성 */
+        .theme-1 .theme-name { color: #3b82f6; }
+
+        /* Theme 2: Growth Green - 효율과 최적화 */
+        .theme-2 .theme-name { color: #10b981; }
+
+        /* Theme 3: Premium Indigo - 프리미엄 엔터프라이즈 */
+        .theme-3 .theme-name { color: #6366f1; }
+
+        /* Theme 4: Modern Slate - 모던 미니멀 */
+        .theme-4 .theme-name { color: #64748b; }
+
+        @media (max-width: 768px) {
+            .theme-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎨 FinOps for AI - 컬러 테마 탐색</h1>
+        <p>각 테마는 FinOps 플랫폼의 특성(신뢰, 전문성, 명확한 상태 구분)을 반영합니다.<br>
+        아래 4가지 옵션을 탐색하고 가장 적합한 방향을 선택해주세요.</p>
+    </div>
+
+    <div class="theme-grid">
+        <!-- Theme 1: Trust Blue -->
+        <div class="theme-card theme-1">
+            <div class="theme-header">
+                <h2 class="theme-name">1. Trust Blue - 신뢰와 안정성</h2>
+                <p class="theme-description">
+                    클래식한 파란색 기반으로 신뢰감과 전문성을 전달합니다.
+                    재무/금융 도구에서 검증된 색상 체계로 보수적인 기업 문화에 적합합니다.
+                </p>
+                <p class="theme-personality">
+                    <strong>감정:</strong> 안정적, 신뢰할 수 있는, 프로페셔널<br>
+                    <strong>적합:</strong> 대기업, 금융권, 보수적 조직
+                </p>
+            </div>
+
+            <div class="palette-section">
+                <div class="palette-label">Primary & Secondary</div>
+                <div class="color-row">
+                    <div class="color-swatch" style="background: #3b82f6; color: #ffffff;">
+                        <span class="color-label">Primary</span>
+                        <span>#3b82f6</span>
+                    </div>
+                    <div class="color-swatch" style="background: #1e40af; color: #ffffff;">
+                        <span class="color-label">Primary Dark</span>
+                        <span>#1e40af</span>
+                    </div>
+                    <div class="color-swatch" style="background: #0f172a; color: #ffffff;">
+                        <span class="color-label">Background</span>
+                        <span>#0f172a</span>
+                    </div>
+                </div>
+
+                <div class="palette-label">Semantic Colors</div>
+                <div class="color-row">
+                    <div class="color-swatch" style="background: #10b981; color: #ffffff;">
+                        <span class="color-label">Success</span>
+                        <span>#10b981</span>
+                    </div>
+                    <div class="color-swatch" style="background: #f59e0b; color: #ffffff;">
+                        <span class="color-label">Warning</span>
+                        <span>#f59e0b</span>
+                    </div>
+                    <div class="color-swatch" style="background: #ef4444; color: #ffffff;">
+                        <span class="color-label">Error</span>
+                        <span>#ef4444</span>
+                    </div>
+                </div>
+
+                <div class="palette-label">Neutral Scale</div>
+                <div class="color-row">
+                    <div class="color-swatch" style="background: #1e293b; color: #ffffff;">
+                        <span>#1e293b</span>
+                    </div>
+                    <div class="color-swatch" style="background: #334155; color: #ffffff;">
+                        <span>#334155</span>
+                    </div>
+                    <div class="color-swatch" style="background: #64748b; color: #ffffff;">
+                        <span>#64748b</span>
+                    </div>
+                    <div class="color-swatch" style="background: #94a3b8; color: #0f172a;">
+                        <span>#94a3b8</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="components-section">
+                <div class="palette-label">UI Components</div>
+
+                <button class="btn" style="background: #3b82f6; color: #ffffff;">Primary Action</button>
+                <button class="btn" style="background: transparent; border: 1px solid #3b82f6; color: #3b82f6;">Secondary</button>
+                <button class="btn" style="background: #1e293b; color: #94a3b8;">Disabled</button>
+
+                <div class="stat-card">
+                    <div class="stat-value" style="color: #3b82f6;">$47,234</div>
+                    <div class="stat-label">Total AI Cost (Today)</div>
+                </div>
+
+                <div class="alert" style="background: rgba(16, 185, 129, 0.1); border-color: #10b981; color: #10b981;">
+                    ✓ 모든 시스템 정상 - 예산 내 운영 중
+                </div>
+
+                <div class="alert" style="background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #ef4444;">
+                    ⚠ 비용 임계값 초과 - 즉시 확인 필요
+                </div>
+            </div>
+        </div>
+
+        <!-- Theme 2: Growth Green -->
+        <div class="theme-card theme-2">
+            <div class="theme-header">
+                <h2 class="theme-name">2. Growth Green - 효율과 최적화</h2>
+                <p class="theme-description">
+                    그린 기반으로 성장, 효율성, 최적화를 상징합니다.
+                    "비용 절감"이라는 긍정적 메시지를 시각적으로 강화하며, 친환경적 이미지도 전달합니다.
+                </p>
+                <p class="theme-personality">
+                    <strong>감정:</strong> 효율적, 성장 중인, 최적화된<br>
+                    <strong>적합:</strong> 스타트업, 성장 기업, 혁신 지향
+                </p>
+            </div>
+
+            <div class="palette-section">
+                <div class="palette-label">Primary & Secondary</div>
+                <div class="color-row">
+                    <div class="color-swatch" style="background: #10b981; color: #ffffff;">
+                        <span class="color-label">Primary</span>
+                        <span>#10b981</span>
+                    </div>
+                    <div class="color-swatch" style="background: #047857; color: #ffffff;">
+                        <span class="color-label">Primary Dark</span>
+                        <span>#047857</span>
+                    </div>
+                    <div class="color-swatch" style="background: #0a0f0d; color: #ffffff;">
+                        <span class="color-label">Background</span>
+                        <span>#0a0f0d</span>
+                    </div>
+                </div>
+
+                <div class="palette-label">Semantic Colors</div>
+                <div class="color-row">
+                    <div class="color-swatch" style="background: #10b981; color: #ffffff;">
+                        <span class="color-label">Success</span>
+                        <span>#10b981</span>
+                    </div>
+                    <div class="color-swatch" style="background: #f59e0b; color: #ffffff;">
+                        <span class="color-label">Warning</span>
+                        <span>#f59e0b</span>
+                    </div>
+                    <div class="color-swatch" style="background: #ef4444; color: #ffffff;">
+                        <span class="color-label">Error</span>
+                        <span>#ef4444</span>
+                    </div>
+                </div>
+
+                <div class="palette-label">Neutral Scale</div>
+                <div class="color-row">
+                    <div class="color-swatch" style="background: #1a1f1e; color: #ffffff;">
+                        <span>#1a1f1e</span>
+                    </div>
+                    <div class="color-swatch" style="background: #2d3532; color: #ffffff;">
+                        <span>#2d3532</span>
+                    </div>
+                    <div class="color-swatch" style="background: #52605c; color: #ffffff;">
+                        <span>#52605c</span>
+                    </div>
+                    <div class="color-swatch" style="background: #94a3b8; color: #0a0f0d;">
+                        <span>#94a3b8</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="components-section">
+                <div class="palette-label">UI Components</div>
+
+                <button class="btn" style="background: #10b981; color: #ffffff;">Primary Action</button>
+                <button class="btn" style="background: transparent; border: 1px solid #10b981; color: #10b981;">Secondary</button>
+                <button class="btn" style="background: #1a1f1e; color: #94a3b8;">Disabled</button>
+
+                <div class="stat-card">
+                    <div class="stat-value" style="color: #10b981;">$47,234</div>
+                    <div class="stat-label">Total AI Cost (Today)</div>
+                </div>
+
+                <div class="alert" style="background: rgba(16, 185, 129, 0.1); border-color: #10b981; color: #10b981;">
+                    ✓ 비용 효율 87% - 평균 대비 우수
+                </div>
+
+                <div class="alert" style="background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #ef4444;">
+                    ⚠ 최적화 필요 - 3개 프로젝트 검토 요망
+                </div>
+            </div>
+        </div>
+
+        <!-- Theme 3: Premium Indigo -->
+        <div class="theme-card theme-3">
+            <div class="theme-header">
+                <h2 class="theme-name">3. Premium Indigo - 프리미엄 엔터프라이즈</h2>
+                <p class="theme-description">
+                    인디고/바이올렛 기반으로 혁신성과 프리미엄 느낌을 동시에 전달합니다.
+                    AI 시대의 첨단 기술을 상징하며, 차별화된 브랜드 아이덴티티를 구축합니다.
+                </p>
+                <p class="theme-personality">
+                    <strong>감정:</strong> 혁신적, 프리미엄, 첨단 기술<br>
+                    <strong>적합:</strong> AI 선도 기업, 테크 자이언트, 혁신 지향
+                </p>
+            </div>
+
+            <div class="palette-section">
+                <div class="palette-label">Primary & Secondary</div>
+                <div class="color-row">
+                    <div class="color-swatch" style="background: #6366f1; color: #ffffff;">
+                        <span class="color-label">Primary</span>
+                        <span>#6366f1</span>
+                    </div>
+                    <div class="color-swatch" style="background: #4338ca; color: #ffffff;">
+                        <span class="color-label">Primary Dark</span>
+                        <span>#4338ca</span>
+                    </div>
+                    <div class="color-swatch" style="background: #0f0a1a; color: #ffffff;">
+                        <span class="color-label">Background</span>
+                        <span>#0f0a1a</span>
+                    </div>
+                </div>
+
+                <div class="palette-label">Semantic Colors</div>
+                <div class="color-row">
+                    <div class="color-swatch" style="background: #10b981; color: #ffffff;">
+                        <span class="color-label">Success</span>
+                        <span>#10b981</span>
+                    </div>
+                    <div class="color-swatch" style="background: #f59e0b; color: #ffffff;">
+                        <span class="color-label">Warning</span>
+                        <span>#f59e0b</span>
+                    </div>
+                    <div class="color-swatch" style="background: #ef4444; color: #ffffff;">
+                        <span class="color-label">Error</span>
+                        <span>#ef4444</span>
+                    </div>
+                </div>
+
+                <div class="palette-label">Neutral Scale</div>
+                <div class="color-row">
+                    <div class="color-swatch" style="background: #1e1b29; color: #ffffff;">
+                        <span>#1e1b29</span>
+                    </div>
+                    <div class="color-swatch" style="background: #312d40; color: #ffffff;">
+                        <span>#312d40</span>
+                    </div>
+                    <div class="color-swatch" style="background: #5b5570; color: #ffffff;">
+                        <span>#5b5570</span>
+                    </div>
+                    <div class="color-swatch" style="background: #a5a0b8; color: #0f0a1a;">
+                        <span>#a5a0b8</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="components-section">
+                <div class="palette-label">UI Components</div>
+
+                <button class="btn" style="background: #6366f1; color: #ffffff;">Primary Action</button>
+                <button class="btn" style="background: transparent; border: 1px solid #6366f1; color: #6366f1;">Secondary</button>
+                <button class="btn" style="background: #1e1b29; color: #a5a0b8;">Disabled</button>
+
+                <div class="stat-card">
+                    <div class="stat-value" style="color: #6366f1;">$47,234</div>
+                    <div class="stat-label">Total AI Cost (Today)</div>
+                </div>
+
+                <div class="alert" style="background: rgba(16, 185, 129, 0.1); border-color: #10b981; color: #10b981;">
+                    ✓ AI 비용 최적화 완료 - 30% 절감
+                </div>
+
+                <div class="alert" style="background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #ef4444;">
+                    ⚠ GPU 클러스터 과부하 - 스케일 조정 권장
+                </div>
+            </div>
+        </div>
+
+        <!-- Theme 4: Modern Slate -->
+        <div class="theme-card theme-4">
+            <div class="theme-header">
+                <h2 class="theme-name">4. Modern Slate - 모던 미니멀</h2>
+                <p class="theme-description">
+                    슬레이트 그레이 기반의 미니멀 디자인으로 Linear 스타일을 완벽 반영합니다.
+                    불필요한 색상을 제거하고 데이터와 콘텐츠에 집중하게 만듭니다.
+                </p>
+                <p class="theme-personality">
+                    <strong>감정:</strong> 세련된, 집중된, 미니멀<br>
+                    <strong>적합:</strong> 모던 스타트업, 디자인 중시 기업
+                </p>
+            </div>
+
+            <div class="palette-section">
+                <div class="palette-label">Primary & Secondary</div>
+                <div class="color-row">
+                    <div class="color-swatch" style="background: #64748b; color: #ffffff;">
+                        <span class="color-label">Primary</span>
+                        <span>#64748b</span>
+                    </div>
+                    <div class="color-swatch" style="background: #475569; color: #ffffff;">
+                        <span class="color-label">Primary Dark</span>
+                        <span>#475569</span>
+                    </div>
+                    <div class="color-swatch" style="background: #0a0a0a; color: #ffffff;">
+                        <span class="color-label">Background</span>
+                        <span>#0a0a0a</span>
+                    </div>
+                </div>
+
+                <div class="palette-label">Semantic Colors</div>
+                <div class="color-row">
+                    <div class="color-swatch" style="background: #10b981; color: #ffffff;">
+                        <span class="color-label">Success</span>
+                        <span>#10b981</span>
+                    </div>
+                    <div class="color-swatch" style="background: #f59e0b; color: #ffffff;">
+                        <span class="color-label">Warning</span>
+                        <span>#f59e0b</span>
+                    </div>
+                    <div class="color-swatch" style="background: #ef4444; color: #ffffff;">
+                        <span class="color-label">Error</span>
+                        <span>#ef4444</span>
+                    </div>
+                </div>
+
+                <div class="palette-label">Neutral Scale</div>
+                <div class="color-row">
+                    <div class="color-swatch" style="background: #1e1e1e; color: #ffffff;">
+                        <span>#1e1e1e</span>
+                    </div>
+                    <div class="color-swatch" style="background: #2a2a2a; color: #ffffff;">
+                        <span>#2a2a2a</span>
+                    </div>
+                    <div class="color-swatch" style="background: #525252; color: #ffffff;">
+                        <span>#525252</span>
+                    </div>
+                    <div class="color-swatch" style="background: #a3a3a3; color: #0a0a0a;">
+                        <span>#a3a3a3</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="components-section">
+                <div class="palette-label">UI Components</div>
+
+                <button class="btn" style="background: #64748b; color: #ffffff;">Primary Action</button>
+                <button class="btn" style="background: transparent; border: 1px solid #64748b; color: #64748b;">Secondary</button>
+                <button class="btn" style="background: #1e1e1e; color: #a3a3a3;">Disabled</button>
+
+                <div class="stat-card">
+                    <div class="stat-value" style="color: #e5e5e5;">$47,234</div>
+                    <div class="stat-label">Total AI Cost (Today)</div>
+                </div>
+
+                <div class="alert" style="background: rgba(16, 185, 129, 0.1); border-color: #10b981; color: #10b981;">
+                    ✓ 정상 작동 중
+                </div>
+
+                <div class="alert" style="background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #ef4444;">
+                    ⚠ 조치 필요
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="comparison-note">
+        <h3>💡 어떤 테마를 선택해야 할까요?</h3>
+        <p><strong>Trust Blue:</strong> 대기업, 금융권 등 보수적 조직에 안전한 선택. 신뢰감 강조.</p>
+        <p><strong>Growth Green:</strong> "비용 절감 = 긍정"을 시각화. 스타트업이나 성장 기업에 적합.</p>
+        <p><strong>Premium Indigo:</strong> AI 시대의 프리미엄 이미지. 차별화된 브랜드 구축.</p>
+        <p><strong>Modern Slate:</strong> Linear 스타일의 극도로 깔끔한 디자인. 데이터에 집중.</p>
+        <p style="margin-top: 16px; color: #ffffff;"><strong>권장:</strong> shadcn/ui의 강점을 살리려면 <strong>Modern Slate</strong> 또는 <strong>Premium Indigo</strong>가 가장 적합합니다.</p>
+    </div>
+</body>
+</html>
