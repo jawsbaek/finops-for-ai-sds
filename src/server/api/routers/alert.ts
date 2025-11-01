@@ -8,8 +8,11 @@
  * - deleteAlert: Deactivate an alert
  */
 
-import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import {
+	verifyAlertAccess,
+	verifyProjectAccess,
+} from "~/server/api/helpers/authorization";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { db } from "~/server/db";
 
@@ -28,35 +31,8 @@ export const alertRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const userId = ctx.session.user.id;
-
-			// Verify user has access to the project's team
-			const project = await db.project.findUnique({
-				where: { id: input.projectId },
-				include: {
-					team: {
-						include: {
-							members: {
-								where: { userId },
-							},
-						},
-					},
-				},
-			});
-
-			if (!project) {
-				throw new TRPCError({
-					code: "NOT_FOUND",
-					message: "프로젝트를 찾을 수 없습니다",
-				});
-			}
-
-			if (project.team.members.length === 0) {
-				throw new TRPCError({
-					code: "FORBIDDEN",
-					message: "이 프로젝트에 접근할 권한이 없습니다",
-				});
-			}
+			// Verify user has access to the project
+			await verifyProjectAccess(input.projectId, ctx.session.user.id);
 
 			// Check if an alert of this type already exists for this project
 			const existingAlert = await db.costAlert.findFirst({
@@ -119,35 +95,8 @@ export const alertRouter = createTRPCRouter({
 			}),
 		)
 		.query(async ({ ctx, input }) => {
-			const userId = ctx.session.user.id;
-
-			// Verify user has access to the project's team
-			const project = await db.project.findUnique({
-				where: { id: input.projectId },
-				include: {
-					team: {
-						include: {
-							members: {
-								where: { userId },
-							},
-						},
-					},
-				},
-			});
-
-			if (!project) {
-				throw new TRPCError({
-					code: "NOT_FOUND",
-					message: "프로젝트를 찾을 수 없습니다",
-				});
-			}
-
-			if (project.team.members.length === 0) {
-				throw new TRPCError({
-					code: "FORBIDDEN",
-					message: "이 프로젝트에 접근할 권한이 없습니다",
-				});
-			}
+			// Verify user has access to the project
+			await verifyProjectAccess(input.projectId, ctx.session.user.id);
 
 			const alerts = await db.costAlert.findMany({
 				where: {
@@ -182,39 +131,8 @@ export const alertRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const userId = ctx.session.user.id;
-
-			// Get alert and verify access
-			const alert = await db.costAlert.findUnique({
-				where: { id: input.alertId },
-				include: {
-					project: {
-						include: {
-							team: {
-								include: {
-									members: {
-										where: { userId },
-									},
-								},
-							},
-						},
-					},
-				},
-			});
-
-			if (!alert) {
-				throw new TRPCError({
-					code: "NOT_FOUND",
-					message: "알림을 찾을 수 없습니다",
-				});
-			}
-
-			if (alert.project.team.members.length === 0) {
-				throw new TRPCError({
-					code: "FORBIDDEN",
-					message: "이 알림을 수정할 권한이 없습니다",
-				});
-			}
+			// Verify user has access to the alert
+			await verifyAlertAccess(input.alertId, ctx.session.user.id);
 
 			const updatedAlert = await db.costAlert.update({
 				where: { id: input.alertId },
@@ -245,39 +163,8 @@ export const alertRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const userId = ctx.session.user.id;
-
-			// Get alert and verify access
-			const alert = await db.costAlert.findUnique({
-				where: { id: input.alertId },
-				include: {
-					project: {
-						include: {
-							team: {
-								include: {
-									members: {
-										where: { userId },
-									},
-								},
-							},
-						},
-					},
-				},
-			});
-
-			if (!alert) {
-				throw new TRPCError({
-					code: "NOT_FOUND",
-					message: "알림을 찾을 수 없습니다",
-				});
-			}
-
-			if (alert.project.team.members.length === 0) {
-				throw new TRPCError({
-					code: "FORBIDDEN",
-					message: "이 알림을 삭제할 권한이 없습니다",
-				});
-			}
+			// Verify user has access to the alert
+			await verifyAlertAccess(input.alertId, ctx.session.user.id);
 
 			const deletedAlert = await db.costAlert.update({
 				where: { id: input.alertId },

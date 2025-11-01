@@ -8,6 +8,7 @@
 
 import type { Decimal } from "@prisma/client/runtime/library";
 import { endOfDay, startOfDay, startOfWeek, subHours } from "date-fns";
+import { ALERT_THRESHOLDS } from "~/lib/constants";
 import { db } from "~/server/db";
 
 export interface AlertEvent {
@@ -46,11 +47,11 @@ export async function checkThresholds(): Promise<AlertEvent[]> {
 	const now = new Date();
 
 	for (const alert of alerts) {
-		// Apply throttling: skip if alert sent within last hour
+		// Apply throttling: skip if alert sent recently
 		if (alert.lastAlertSentAt) {
 			const hoursSinceLastAlert =
 				(now.getTime() - alert.lastAlertSentAt.getTime()) / (1000 * 60 * 60);
-			if (hoursSinceLastAlert < 1) {
+			if (hoursSinceLastAlert < ALERT_THRESHOLDS.MIN_HOURS_BETWEEN_ALERTS) {
 				continue; // Skip this alert (throttled)
 			}
 		}

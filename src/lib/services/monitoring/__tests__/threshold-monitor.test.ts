@@ -5,8 +5,6 @@
  */
 
 // Mock the database - must be at top level before imports
-import { vi } from "vitest";
-
 vi.mock("~/server/db", () => ({
 	db: {
 		costAlert: {

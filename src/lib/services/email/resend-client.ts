@@ -9,6 +9,7 @@ import { render } from "@react-email/components";
 import { Resend } from "resend";
 import { env } from "~/env";
 import { logger } from "~/lib/logger";
+import { retryWithBackoff } from "~/lib/utils/retry";
 import CostAlertEmail, {
 	type CostAlertEmailProps,
 } from "./templates/CostAlertEmail";
@@ -45,63 +46,31 @@ export async function sendCostAlertEmail(
 		}),
 	);
 
-	await retryWithBackoff(async () => {
-		const result = await resend.emails.send({
-			from: env.RESEND_FROM_EMAIL ?? "FinOps for AI <alerts@finops-ai.com>",
-			to: params.to,
-			subject: `🚨 [${params.teamName}] ${params.projectName} 비용 임계값 초과`,
-			html: emailHtml,
-		});
-
-		if (result.error) {
-			throw new Error(`Resend API error: ${result.error.message}`);
-		}
-
-		logger.info(
-			{
-				projectName: params.projectName,
+	await retryWithBackoff(
+		async () => {
+			const result = await resend.emails.send({
+				from: env.RESEND_FROM_EMAIL ?? "FinOps for AI <alerts@finops-ai.com>",
 				to: params.to,
-				emailId: result.data?.id,
-			},
-			"Cost alert email sent successfully",
-		);
-	});
-}
+				subject: `🚨 [${params.teamName}] ${params.projectName} 비용 임계값 초과`,
+				html: emailHtml,
+			});
 
-/**
- * Retry function with exponential backoff
- *
- * Retries up to 3 times with delays: 1s, 2s, 4s
- */
-async function retryWithBackoff<T>(
-	fn: () => Promise<T>,
-	maxRetries = 3,
-): Promise<T> {
-	let lastError: Error | undefined;
-
-	for (let attempt = 0; attempt < maxRetries; attempt++) {
-		try {
-			return await fn();
-		} catch (error) {
-			lastError = error as Error;
-
-			if (attempt < maxRetries - 1) {
-				// Exponential backoff: 1s, 2s, 4s
-				const delayMs = 1000 * 2 ** attempt;
-				logger.warn(
-					{ attempt, delayMs, error: lastError.message },
-					"Retrying email send after error",
-				);
-				await new Promise((resolve) => setTimeout(resolve, delayMs));
+			if (result.error) {
+				throw new Error(`Resend API error: ${result.error.message}`);
 			}
-		}
-	}
 
-	// Log to Sentry on final failure
-	logger.error(
-		{ error: lastError?.message },
-		"Email send failed after all retries",
+			logger.info(
+				{
+					projectName: params.projectName,
+					to: params.to,
+					emailId: result.data?.id,
+				},
+				"Cost alert email sent successfully",
+			);
+		},
+		{
+			context: "Email send",
+			finalErrorMessage: "Email send failed after all retries",
+		},
 	);
-
-	throw lastError;
 }

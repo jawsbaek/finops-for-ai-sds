@@ -6,6 +6,7 @@
  */
 
 import { logger } from "~/lib/logger";
+import { retryWithBackoff } from "~/lib/utils/retry";
 
 export interface SlackCostAlertParams {
 	projectName: string;
@@ -59,61 +60,31 @@ export async function sendCostAlert(
 		],
 	};
 
-	await retryWithBackoff(async () => {
-		const response = await fetch(webhookUrl, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify(payload),
-		});
+	await retryWithBackoff(
+		async () => {
+			const response = await fetch(webhookUrl, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(payload),
+			});
 
-		if (!response.ok) {
-			const errorText = await response.text();
-			throw new Error(`Slack webhook failed: ${response.status} ${errorText}`);
-		}
-
-		logger.info(
-			{ projectName: params.projectName },
-			"Slack alert sent successfully",
-		);
-	});
-}
-
-/**
- * Retry function with exponential backoff
- *
- * Retries up to 3 times with delays: 1s, 2s, 4s
- */
-async function retryWithBackoff<T>(
-	fn: () => Promise<T>,
-	maxRetries = 3,
-): Promise<T> {
-	let lastError: Error | undefined;
-
-	for (let attempt = 0; attempt < maxRetries; attempt++) {
-		try {
-			return await fn();
-		} catch (error) {
-			lastError = error as Error;
-
-			if (attempt < maxRetries - 1) {
-				// Exponential backoff: 1s, 2s, 4s
-				const delayMs = 1000 * 2 ** attempt;
-				logger.warn(
-					{ attempt, delayMs, error: lastError.message },
-					"Retrying Slack webhook after error",
+			if (!response.ok) {
+				const errorText = await response.text();
+				throw new Error(
+					`Slack webhook failed: ${response.status} ${errorText}`,
 				);
-				await new Promise((resolve) => setTimeout(resolve, delayMs));
 			}
-		}
-	}
 
-	// Log to Sentry on final failure
-	logger.error(
-		{ error: lastError?.message },
-		"Slack webhook failed after all retries",
+			logger.info(
+				{ projectName: params.projectName },
+				"Slack alert sent successfully",
+			);
+		},
+		{
+			context: "Slack webhook",
+			finalErrorMessage: "Slack webhook failed after all retries",
+		},
 	);
-
-	throw lastError;
 }

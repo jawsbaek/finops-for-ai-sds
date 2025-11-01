@@ -5,8 +5,6 @@
  */
 
 // Mock dependencies
-import { vi } from "vitest";
-
 vi.mock("~/env", () => ({
 	env: {
 		RESEND_API_KEY: "re_test_key_123",

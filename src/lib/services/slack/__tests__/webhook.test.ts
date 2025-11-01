@@ -5,8 +5,6 @@
  */
 
 // Mock logger to avoid console noise
-import { vi } from "vitest";
-
 vi.mock("~/lib/logger", () => ({
 	logger: {
 		info: vi.fn(),
@@ -45,7 +43,8 @@ describe("Slack Webhook Service", () => {
 
 	describe("sendCostAlert", () => {
 		it("should skip sending when SLACK_WEBHOOK_URL is not configured", async () => {
-			process.env.SLACK_WEBHOOK_URL = undefined;
+			// biome-ignore lint/performance/noDelete: Need to delete env var for test
+			delete process.env.SLACK_WEBHOOK_URL;
 
 			await sendCostAlert(mockParams);
 

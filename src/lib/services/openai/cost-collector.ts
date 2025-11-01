@@ -6,6 +6,8 @@
  */
 
 import pino from "pino";
+import { COST_COLLECTION } from "~/lib/constants";
+import { retryWithBackoff } from "~/lib/utils/retry";
 import { db } from "~/server/db";
 import { getKMSEncryption } from "../encryption/kms-envelope";
 
@@ -47,40 +49,6 @@ export interface CollectedCostData {
 	projectId?: string; // Optional project association
 	taskType?: string; // Optional task type (e.g., "chat", "embedding", "fine-tuning")
 	userIntent?: string; // Optional user intent description
-}
-
-/**
- * Retry a function with exponential backoff
- *
- * @param fn - The async function to retry
- * @param maxRetries - Maximum number of retry attempts (default: 3)
- * @returns The result of the function
- */
-async function retryWithBackoff<T>(
-	fn: () => Promise<T>,
-	maxRetries = 3,
-): Promise<T> {
-	let lastError: Error | undefined;
-
-	for (let attempt = 0; attempt < maxRetries; attempt++) {
-		try {
-			return await fn();
-		} catch (error) {
-			lastError = error as Error;
-
-			if (attempt < maxRetries - 1) {
-				// Exponential backoff: 1s, 2s, 4s
-				const delayMs = 1000 * 2 ** attempt;
-				logger.warn(
-					{ attempt, delayMs, error: lastError.message },
-					"Retrying after error",
-				);
-				await new Promise((resolve) => setTimeout(resolve, delayMs));
-			}
-		}
-	}
-
-	throw lastError;
 }
 
 /**
@@ -133,8 +101,9 @@ async function fetchOpenAIUsageComplete(
 	let hasMore = true;
 
 	while (hasMore) {
-		const response = await retryWithBackoff(() =>
-			fetchOpenAIUsage(apiKey, currentUrl),
+		const response = await retryWithBackoff(
+			() => fetchOpenAIUsage(apiKey, currentUrl),
+			{ context: "OpenAI Usage API fetch" },
 		);
 
 		allData.push(...response.data);
@@ -169,7 +138,9 @@ export async function collectDailyCosts(
 	targetDate?: Date,
 ): Promise<CollectedCostData[]> {
 	// Default to yesterday (OpenAI data is delayed 8-24 hours)
-	const date = targetDate ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
+	const date =
+		targetDate ??
+		new Date(Date.now() - COST_COLLECTION.DATA_DELAY_HOURS * 60 * 60 * 1000);
 	const dateString = date.toISOString().split("T")[0] as string; // YYYY-MM-DD
 
 	logger.info({ date: dateString }, "Starting daily cost collection");
@@ -204,12 +175,14 @@ export async function collectDailyCosts(
 			);
 
 			// Decrypt API key using KMS
-			const decryptedKey = await retryWithBackoff(() =>
-				getKMSEncryption().decrypt(
-					apiKeyRecord.encryptedKey,
-					apiKeyRecord.encryptedDataKey,
-					apiKeyRecord.iv,
-				),
+			const decryptedKey = await retryWithBackoff(
+				() =>
+					getKMSEncryption().decrypt(
+						apiKeyRecord.encryptedKey,
+						apiKeyRecord.encryptedDataKey,
+						apiKeyRecord.iv,
+					),
+				{ context: "KMS decryption" },
 			);
 
 			// Fetch usage data from OpenAI with retry and pagination support
@@ -252,10 +225,12 @@ export async function collectDailyCosts(
 			);
 		}
 
-		// Rate limiting: Wait 1 second between API calls to respect OpenAI limits
+		// Rate limiting: Wait between API calls to respect OpenAI limits
 		// OpenAI rate limit is 60 requests/second, but we add delay for safety
 		if (apiKeys.length > 1) {
-			await new Promise((resolve) => setTimeout(resolve, 1000));
+			await new Promise((resolve) =>
+				setTimeout(resolve, COST_COLLECTION.RATE_LIMIT_DELAY_MS),
+			);
 		}
 	}
 
@@ -286,8 +261,8 @@ export async function storeCostData(
 		"Storing cost data in database",
 	);
 
-	// Use batch insert for performance (max 1,000 records per batch)
-	const batchSize = 1000;
+	// Use batch insert for performance
+	const batchSize = COST_COLLECTION.BATCH_SIZE;
 	let totalCreated = 0;
 
 	for (let i = 0; i < costDataRecords.length; i += batchSize) {

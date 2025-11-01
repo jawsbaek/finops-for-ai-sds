@@ -95,7 +95,7 @@ export const projectRouter = createTRPCRouter({
 
 		const startDate = subDays(new Date(), 30);
 
-		// Get all projects with metrics and recent costs
+		// Get all projects with team info and metrics (Prisma best practice)
 		const projects = await db.project.findMany({
 			where: {
 				teamId: { in: teamIds },
@@ -108,29 +108,37 @@ export const projectRouter = createTRPCRouter({
 					},
 				},
 				metrics: true,
-				costData: {
-					where: {
-						date: {
-							gte: startDate,
-						},
-					},
-					select: {
-						cost: true,
-						date: true,
-					},
-				},
 			},
 			orderBy: {
 				createdAt: "desc",
 			},
 		});
 
-		// Calculate total cost for each project
+		// Efficiently aggregate costs per project using groupBy (Prisma best practice)
+		const costAggregates = await db.costData.groupBy({
+			by: ["projectId"],
+			where: {
+				projectId: { in: projects.map((p) => p.id) },
+				date: {
+					gte: startDate,
+				},
+			},
+			_sum: {
+				cost: true,
+			},
+		});
+
+		// Create a map for O(1) lookup
+		const costMap = new Map(
+			costAggregates.map((agg) => [
+				agg.projectId,
+				agg._sum.cost?.toNumber() ?? 0,
+			]),
+		);
+
+		// Combine project data with aggregated costs
 		return projects.map((project) => {
-			const totalCost = project.costData.reduce(
-				(sum, cost) => sum + cost.cost.toNumber(),
-				0,
-			);
+			const totalCost = costMap.get(project.id) ?? 0;
 
 			// Calculate efficiency if metrics exist
 			const efficiency =
@@ -140,10 +148,6 @@ export const projectRouter = createTRPCRouter({
 
 			return {
 				...project,
-				costData: project.costData.map((cost) => ({
-					...cost,
-					cost: cost.cost.toNumber(),
-				})),
 				totalCost,
 				efficiency,
 			};
