@@ -5,7 +5,7 @@ pre-commit:
   parallel: true
   commands:
     lint:
-      glob: "*.{js,ts,jsx,tsx}"
+      glob: "**/*.{js,ts,jsx,tsx}"
       run: bun run check:write
       stage_fixed: true
 
@@ -15,7 +15,7 @@ pre-commit:
       stage_fixed: true
 
     validate-colors:
-      glob: "*.{js,ts,jsx,tsx}"
+      glob: "**/*.{js,ts,jsx,tsx}"
       run: bun run validate:colors
       fail_text: "❌ Color system validation failed. See docs/color-system-guidelines.md"
 
