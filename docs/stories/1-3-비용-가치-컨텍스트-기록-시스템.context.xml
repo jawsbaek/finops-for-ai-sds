@@ -1,0 +1,397 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>3</storyId>
+    <title>비용-가치 컨텍스트 기록 시스템</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-01</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-3-비용-가치-컨텍스트-기록-시스템.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>프로젝트 관리자</asA>
+    <iWant>각 API 호출에 대해 프로젝트명, 작업 유형, 의도를 함께 기록하여</iWant>
+    <soThat>단순 비용이 아닌 "무엇을 위해 지출했는가"를 이해할 수 있다</soThat>
+    <tasks>
+- Task 1: 프로젝트 관리 tRPC router 생성 (AC: #1, #4)
+  - src/server/api/routers/project.ts 생성
+  - create 프로시저 구현 (프로젝트명 필수 검증)
+  - getAll 프로시저 구현 (사용자 팀의 모든 프로젝트 조회)
+  - getById 프로시저 구현 (프로젝트 상세 + 최근 30일 비용)
+  - updateMetrics 프로시저 구현 (성과 메트릭 업데이트)
+  - src/server/api/root.ts에 projectRouter 추가
+
+- Task 2: 비용 데이터 컨텍스트 메타데이터 구조 추가 (AC: #2)
+  - Prisma schema의 CostData 모델 확인 (task_type, user_intent 컬럼 존재)
+  - src/lib/services/openai/cost-collector.ts 업데이트하여 컨텍스트 저장 지원
+  - 컨텍스트 메타데이터 타입 정의 (TypeScript)
+
+- Task 3: 프로젝트 상세 페이지 구현 (AC: #3, #5)
+  - src/app/(dashboard)/projects/[id]/page.tsx 생성
+  - tRPC api.project.getById.useQuery() 호출
+  - 총 비용 StatCard 표시
+  - 작업 유형별 비용 분포 CostChart 생성 (파이 차트 또는 바 차트)
+  - 비용 대비 성과 차트 구현 (라인 차트)
+
+- Task 4: 성과 메트릭 입력 UI 구현 (AC: #4)
+  - 프로젝트 상세 페이지에 "성과 메트릭 입력" 섹션 추가
+  - 입력 필드: 성공한 작업 수 (숫자), 사용자 피드백 점수 (1-5 별점)
+  - tRPC api.project.updateMetrics.useMutation() 호출
+  - Toast 알림 표시 (성공/실패)
+
+- Task 5: 프로젝트 목록 페이지 구현
+  - src/app/(dashboard)/projects/page.tsx 생성
+  - tRPC api.project.getAll.useQuery() 호출
+  - ProjectCard 컴포넌트로 프로젝트 목록 표시
+  - 각 카드에 총 비용, 최근 7일 비용 추이 표시
+  - 프로젝트 생성 버튼 및 모달 추가
+
+- Task 6: Efficiency Calculator 서비스 구현 (AC: #5)
+  - src/lib/services/reporting/efficiency.ts 생성
+  - calculateEfficiency 함수 구현 (success_count / total_cost)
+  - getCostValueData 함수 구현 (비용-가치 시계열 데이터)
+  - projectRouter.getById에서 efficiency 계산 통합
+
+- Task 7: 통합 테스트 및 검증
+  - 프로젝트 생성 E2E 테스트
+  - 성과 메트릭 입력 E2E 테스트
+  - 비용 대비 성과 차트 표시 확인
+  - TypeScript type checking passed
+  - Production build successful
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. 시스템은 API 키 생성 시 프로젝트명을 필수로 입력받아야 한다 (FR007)
+2. 시스템은 API 호출 로그에 컨텍스트 메타데이터를 기록할 수 있는 구조를 제공해야 한다 (FR002)
+3. 프로젝트 상세 페이지에서 "총 비용"과 함께 "주요 작업 유형별 비용 분포"를 표시해야 한다
+4. 사용자가 프로젝트별로 "성과 메트릭"을 입력할 수 있어야 한다 (예: 성공한 작업 수, 사용자 피드백 점수)
+5. 프로젝트 상세 페이지에서 "비용 대비 성과" 차트를 표시해야 한다 (FR003)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>Functional Requirements - Phase 1A</section>
+        <snippet>FR002: 시스템은 각 API 호출에 대해 비용과 함께 컨텍스트(프로젝트명, 작업 유형, 사용자 의도)를 기록해야 한다. FR003: 시스템은 프로젝트/실험별로 "총 비용" 및 "비용 대비 성과"를 함께 표시해야 한다. FR007: 시스템은 팀별로 별도의 OpenAI API 키를 생성하고 관리할 수 있어야 한다.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>ADR-006: Novel Pattern - 비용-가치 연결</section>
+        <snippet>Context Tracker + Value Metrics + Efficiency Calculator 패턴. OpenAI API 호출 시점에 컨텍스트 기록 (프로젝트, 작업 유형), 사용자가 성과 메트릭 입력, 효율성 = 성과 / 비용 계산, 주간 리포트에 Top 3 / Bottom 3 랭킹.</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-1.md</path>
+        <title>Technical Specification - Epic 1</title>
+        <section>Data Models - Project and ProjectMetrics</section>
+        <snippet>Project 모델: id, name, description, team_id, created_at. ProjectMetrics 모델: id, project_id (unique), success_count (default 0), feedback_score (1-5 평균). CostData 모델에 task_type, user_intent 컬럼 추가로 Novel Pattern 1 지원.</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-1.md</path>
+        <title>Technical Specification - Epic 1</title>
+        <section>API Routes - projectRouter</section>
+        <snippet>projectRouter: getAll (사용자 팀의 모든 프로젝트 + 최근 30일 비용), getById (프로젝트 상세 + 비용 추이), updateMetrics (성과 메트릭 업데이트 - successCount, feedbackScore).</snippet>
+      </doc>
+      <doc>
+        <path>docs/ux-design-specification.md</path>
+        <title>UX Design Specification</title>
+        <section>Design System - Premium Indigo Theme</section>
+        <snippet>다크 모드 전용. Semantic colors: --color-primary, --color-warning, --color-success. Text: text-foreground, text-muted-foreground. CRITICAL: Tailwind 기본 색상(gray-900, blue-50) 사용 금지.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/1-2-openai-api-비용-일일-배치-수집-시스템.md</path>
+        <title>Story 1.2 - OpenAI API 비용 일일 배치 수집 시스템</title>
+        <section>Learnings from Previous Story</section>
+        <snippet>Prisma schema with Project, ProjectMetrics models ready. tRPC router pattern established (auth, cost routers). StatCard component available (shadcn/ui, variant="primary|warning"). Design system: Premium Indigo theme, use semantic colors only.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/server/api/root.ts</path>
+        <kind>router</kind>
+        <symbol>appRouter</symbol>
+        <lines>1-26</lines>
+        <reason>Main tRPC router where projectRouter will be added. Currently includes authRouter and costRouter.</reason>
+      </artifact>
+      <artifact>
+        <path>src/server/api/routers/cost.ts</path>
+        <kind>router</kind>
+        <symbol>costRouter</symbol>
+        <lines>1-280</lines>
+        <reason>Reference implementation of tRPC router patterns: protectedProcedure, Zod validation, Prisma queries, team access control.</reason>
+      </artifact>
+      <artifact>
+        <path>src/server/api/routers/auth.ts</path>
+        <kind>router</kind>
+        <symbol>authRouter</symbol>
+        <lines>all</lines>
+        <reason>Reference for protectedProcedure pattern and team membership verification.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/custom/stat-card.tsx</path>
+        <kind>component</kind>
+        <symbol>StatCard</symbol>
+        <lines>1-137</lines>
+        <reason>Reusable component for displaying project total cost. Supports variants (primary, warning, success, error), trend indicators, and loading states.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/services/openai/cost-collector.ts</path>
+        <kind>service</kind>
+        <symbol>collectOpenAICosts</symbol>
+        <lines>all</lines>
+        <reason>Needs update to support context metadata (task_type, user_intent) storage when collecting costs.</reason>
+      </artifact>
+      <artifact>
+        <path>prisma/schema.prisma</path>
+        <kind>schema</kind>
+        <symbol>Project, ProjectMetrics, CostData</symbol>
+        <lines>75-88 (Project)</lines>
+        <reason>Database models for Project management. Note: Project model exists but missing ProjectMetrics model - needs to be added per tech-spec.</reason>
+      </artifact>
+      <artifact>
+        <path>src/app/(dashboard)/dashboard/page.tsx</path>
+        <kind>page</kind>
+        <symbol>DashboardPage</symbol>
+        <lines>all</lines>
+        <reason>Reference for dashboard layout patterns, tRPC query usage, and design system compliance.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <ecosystem name="Node.js/Next.js">
+        <package name="next" version="^15.2.3" />
+        <package name="react" version="^19.0.0" />
+        <package name="@trpc/server" version="^11.0.0" />
+        <package name="@trpc/client" version="^11.0.0" />
+        <package name="@prisma/client" version="^6.5.0" />
+        <package name="zod" version="^3.24.2" />
+        <package name="recharts" version="^3.3.0" note="For cost charts" />
+        <package name="lucide-react" version="^0.552.0" note="Icon library" />
+        <package name="sonner" version="^2.0.7" note="Toast notifications" />
+        <package name="react-hook-form" version="^7.66.0" note="Form management" />
+        <package name="date-fns" version="^4.1.0" note="Date utilities" />
+      </ecosystem>
+      <framework>
+        <name>T3 Stack</name>
+        <components>Next.js 15 App Router, tRPC v11, Prisma, NextAuth.js, Tailwind CSS v4</components>
+      </framework>
+      <framework>
+        <name>shadcn/ui</name>
+        <components>Radix UI primitives with Premium Indigo theme customization</components>
+      </framework>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint type="architecture">
+      <rule>모든 tRPC 프로시저는 protectedProcedure를 사용하여 인증된 사용자만 접근 가능해야 함</rule>
+      <source>src/server/api/routers/cost.ts:24</source>
+    </constraint>
+    <constraint type="architecture">
+      <rule>프로젝트 접근 시 사용자의 팀 멤버십 검증 필수 (team access control pattern)</rule>
+      <source>src/server/api/routers/cost.ts:34-48</source>
+    </constraint>
+    <constraint type="design-system">
+      <rule>CRITICAL: Tailwind 기본 색상 사용 금지. 반드시 semantic colors 사용: text-foreground, text-muted-foreground, bg-primary, border-primary</rule>
+      <source>docs/ux-design-specification.md, docs/stories/1-2-*.md#Review-Findings</source>
+    </constraint>
+    <constraint type="data-integrity">
+      <rule>Prisma schema의 snake_case 컬럼 네이밍 준수 (team_id, created_at, user_intent 등)</rule>
+      <source>prisma/schema.prisma</source>
+    </constraint>
+    <constraint type="validation">
+      <rule>모든 tRPC 프로시저 input은 Zod schema로 검증 필수</rule>
+      <source>src/server/api/routers/cost.ts:25-28, tech-spec-epic-1.md:257-261</source>
+    </constraint>
+    <constraint type="novel-pattern">
+      <rule>Novel Pattern 1 구현: CostData에 task_type, user_intent 컬럼 활용, ProjectMetrics로 성과 추적, Efficiency = success_count / total_cost</rule>
+      <source>docs/architecture.md:1557-1579, docs/tech-spec-epic-1.md:171-173</source>
+    </constraint>
+    <constraint type="testing">
+      <rule>Unit tests (Vitest), Integration tests (Vitest + MSW), E2E tests (Playwright) 모두 작성 필수</rule>
+      <source>Story Dev Notes - Testing Standards Summary</source>
+    </constraint>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>projectRouter.create</name>
+      <kind>tRPC mutation</kind>
+      <signature>
+        create: protectedProcedure
+          .input(z.object({
+            name: z.string().min(1),
+            description: z.string().optional(),
+            teamId: z.string()
+          }))
+          .mutation(async ({ input, ctx }) => Project)
+      </signature>
+      <path>src/server/api/routers/project.ts (NEW)</path>
+    </interface>
+    <interface>
+      <name>projectRouter.getAll</name>
+      <kind>tRPC query</kind>
+      <signature>
+        getAll: protectedProcedure
+          .query(async ({ ctx }) => Project[] with recent 30-day costs)
+      </signature>
+      <path>src/server/api/routers/project.ts (NEW)</path>
+    </interface>
+    <interface>
+      <name>projectRouter.getById</name>
+      <kind>tRPC query</kind>
+      <signature>
+        getById: protectedProcedure
+          .input(z.object({ id: z.string() }))
+          .query(async ({ input, ctx }) => Project with cost trends and efficiency)
+      </signature>
+      <path>src/server/api/routers/project.ts (NEW)</path>
+    </interface>
+    <interface>
+      <name>projectRouter.updateMetrics</name>
+      <kind>tRPC mutation</kind>
+      <signature>
+        updateMetrics: protectedProcedure
+          .input(z.object({
+            projectId: z.string(),
+            successCount: z.number().int().min(0),
+            feedbackScore: z.number().min(1).max(5).optional()
+          }))
+          .mutation(async ({ input, ctx }) => ProjectMetrics)
+      </signature>
+      <path>src/server/api/routers/project.ts (NEW)</path>
+    </interface>
+    <interface>
+      <name>calculateEfficiency</name>
+      <kind>service function</kind>
+      <signature>
+        calculateEfficiency(successCount: number, totalCost: number): number
+        // Returns: efficiency = successCount / totalCost
+      </signature>
+      <path>src/lib/services/reporting/efficiency.ts (NEW)</path>
+    </interface>
+    <interface>
+      <name>getCostValueData</name>
+      <kind>service function</kind>
+      <signature>
+        getCostValueData(projectId: string, days?: number): Promise&lt;{ date: Date, cost: number, value: number }[]&gt;
+        // Returns: time-series data for cost-value chart
+      </signature>
+      <path>src/lib/services/reporting/efficiency.ts (NEW)</path>
+    </interface>
+    <interface>
+      <name>StatCard</name>
+      <kind>React component</kind>
+      <signature>
+        StatCard({ label, value, change?, trend?, variant?, icon?, loading? })
+        // Variants: 'primary' | 'success' | 'warning' | 'error'
+        // Trend: 'up' | 'down' | 'neutral'
+      </signature>
+      <path>src/components/custom/stat-card.tsx (REUSE)</path>
+    </interface>
+    <interface>
+      <name>Prisma - Project</name>
+      <kind>Database model</kind>
+      <signature>
+        model Project {
+          id: String @id @default(cuid())
+          teamId: String
+          name: String
+          description: String?
+          createdAt: DateTime @default(now())
+          updatedAt: DateTime @updatedAt
+          team: Team
+          costData: CostData[]
+        }
+      </signature>
+      <path>prisma/schema.prisma:75-88</path>
+    </interface>
+    <interface>
+      <name>Prisma - ProjectMetrics</name>
+      <kind>Database model (TO BE ADDED)</kind>
+      <signature>
+        model ProjectMetrics {
+          id: String @id @default(cuid())
+          projectId: String @unique
+          successCount: Int @default(0)
+          feedbackScore: Float?  // 1-5 average
+          project: Project @relation(...)
+        }
+      </signature>
+      <path>prisma/schema.prisma (NEW - per tech-spec-epic-1.md:147-156)</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+      **Testing Framework**: Vitest for unit and integration tests, Playwright for E2E tests.
+
+      **Unit Tests Pattern**:
+      - Test files: `*.test.ts` co-located with source files
+      - Use Vitest's `describe`, `it`, `expect` API
+      - Mock Prisma with `vi.mock('~/server/db')`
+      - Example: `src/lib/services/openai/cost-collector.test.ts`
+
+      **Integration Tests Pattern**:
+      - Test tRPC routers with mocked database
+      - Use MSW (Mock Service Worker) for API mocking if needed
+      - Verify input validation, error handling, access control
+
+      **E2E Tests Pattern**:
+      - Use Playwright for full user flows
+      - Test critical paths: project creation → metrics update → chart display
+      - Verify UI rendering with design system compliance
+
+      **Coverage Requirements**:
+      - All tRPC procedures must have unit tests
+      - All service functions must have unit tests
+      - Critical user flows must have E2E tests
+      - Run `bun test` for unit/integration, separate E2E test suite
+    </standards>
+    <locations>
+      src/**/*.test.ts - Unit tests (co-located with source)
+      src/**/*.integration.test.ts - Integration tests
+      e2e/**/*.spec.ts - E2E tests (Playwright)
+    </locations>
+    <ideas>
+      <test-idea ac="1">
+        **AC1: API 키 생성 시 프로젝트명 필수 입력**
+        - Unit: projectRouter.create validation - reject if name is empty string
+        - Integration: Create project with valid name → success, without name → TRPCError
+      </test-idea>
+      <test-idea ac="2">
+        **AC2: 컨텍스트 메타데이터 기록 구조**
+        - Unit: cost-collector.ts - verify task_type, user_intent saved to CostData
+        - Integration: Query CostData → verify context fields populated
+      </test-idea>
+      <test-idea ac="3">
+        **AC3: 프로젝트 상세 페이지 - 총 비용 및 작업 유형별 분포**
+        - Unit: projectRouter.getById - aggregate costs by task_type
+        - E2E: Navigate to project detail → verify StatCard shows total cost, CostChart shows task breakdown
+      </test-idea>
+      <test-idea ac="4">
+        **AC4: 성과 메트릭 입력**
+        - Unit: projectRouter.updateMetrics - validate successCount >= 0, feedbackScore 1-5
+        - Integration: Update metrics → verify ProjectMetrics updated
+        - E2E: Fill metrics form → submit → verify toast notification
+      </test-idea>
+      <test-idea ac="5">
+        **AC5: 비용 대비 성과 차트**
+        - Unit: calculateEfficiency - test efficiency = success_count / total_cost
+        - Unit: getCostValueData - return time-series data
+        - E2E: Project detail page → verify cost-value chart renders with correct data points
+      </test-idea>
+      <test-idea general="true">
+        **General: Team Access Control**
+        - Integration: User A tries to access Team B's project → expect FORBIDDEN error
+        - Integration: User without team membership → returns empty project list
+      </test-idea>
+      <test-idea general="true">
+        **General: Design System Compliance**
+        - E2E: Verify all pages use semantic colors (text-foreground, bg-primary)
+        - E2E: Check for NO usage of Tailwind default colors (gray-900, blue-50)
+      </test-idea>
+    </ideas>
+  </tests>
+</story-context>

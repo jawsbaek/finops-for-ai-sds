@@ -80,9 +80,10 @@ model Project {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  team     Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  costData CostData[]
-  metrics  ProjectMetrics?
+  team       Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  costData   CostData[]
+  metrics    ProjectMetrics?
+  costAlerts CostAlert[]
 
   @@index([teamId])
   @@map("projects")
@@ -146,6 +147,23 @@ model CostData {
   @@index([teamId, date])
   @@index([projectId, date])
   @@map("cost_data")
+}
+
+model CostAlert {
+  id              String    @id @default(cuid())
+  projectId       String    @map("project_id")
+  thresholdType   String    @map("threshold_type")
+  thresholdValue  Decimal   @map("threshold_value") @db.Decimal(10, 2)
+  isActive        Boolean   @default(true) @map("is_active")
+  lastAlertSentAt DateTime? @map("last_alert_sent_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([isActive])
+  @@map("cost_alerts")
 }
 
 model CronLog {

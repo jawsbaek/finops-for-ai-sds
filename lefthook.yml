@@ -32,7 +32,7 @@ pre-push:
       run: |
         if bun run -h 2>/dev/null | grep -q "test"; then
           echo "🧪 Running tests..."
-          bun test
+          bunx vitest run
         else
           echo "⏭️  No test script found, skipping tests"
         fi
