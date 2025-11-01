@@ -6,7 +6,7 @@ pre-commit:
   commands:
     lint:
       glob: "*.{js,ts,jsx,tsx}"
-      run: bun run lint --fix
+      run: bun run check:write
       stage_fixed: true
 
     format-prisma:
