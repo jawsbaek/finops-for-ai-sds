@@ -83,47 +83,15 @@ export default function ProjectsPage() {
 		}).format(amount);
 	};
 
-	// Calculate trend from cost data
-	const calculateTrend = (costData: Array<{ date: Date; cost: number }>) => {
-		if (costData.length < 2) return undefined;
-
-		const recentCosts = costData.slice(-7);
-		const first3Days = recentCosts.slice(0, 3);
-		const last3Days = recentCosts.slice(-3);
-
-		const first3DaysAvg =
-			first3Days.length > 0
-				? first3Days.reduce((sum, d) => sum + d.cost, 0) / first3Days.length
-				: 0;
-		const last3DaysAvg =
-			last3Days.length > 0
-				? last3Days.reduce((sum, d) => sum + d.cost, 0) / last3Days.length
-				: 0;
-
-		const changePercent =
-			first3DaysAvg > 0
-				? ((last3DaysAvg - first3DaysAvg) / first3DaysAvg) * 100
-				: 0;
-
-		return {
-			current: formatCurrency(last3DaysAvg),
-			previous: formatCurrency(first3DaysAvg),
-			change: `${changePercent > 0 ? "+" : ""}${changePercent.toFixed(1)}%`,
-		};
-	};
-
-	// Determine status based on efficiency and trend
+	// Determine status based on efficiency only (costData not available in getAll)
 	const getProjectStatus = (
 		efficiency: number | null,
-		costData: Array<{ date: Date; cost: number }>,
 	): "normal" | "warning" | "critical" => {
 		// Critical: Low efficiency (<5)
 		if (efficiency !== null && efficiency < 5) return "critical";
 
-		// Warning: Medium efficiency (5-10) or increasing costs
-		const trend = calculateTrend(costData);
+		// Warning: Medium efficiency (5-10)
 		if (efficiency !== null && efficiency < 10) return "warning";
-		if (trend?.change.startsWith("+")) return "warning";
 
 		return "normal";
 	};
@@ -228,8 +196,7 @@ export default function ProjectsPage() {
 							name={project.name}
 							team={project.team.name}
 							cost={formatCurrency(project.totalCost)}
-							status={getProjectStatus(project.efficiency, project.costData)}
-							trend={calculateTrend(project.costData)}
+							status={getProjectStatus(project.efficiency)}
 							onClick={() => router.push(`/projects/${project.id}`)}
 						/>
 					))}

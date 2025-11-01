@@ -25,7 +25,7 @@ pre-push:
     type-check:
       run: |
         echo "🔍 Running type check..."
-        bun run build
+        bunx tsc --noEmit
       fail_text: "❌ Type check failed. Please fix TypeScript errors before pushing."
 
     test:
