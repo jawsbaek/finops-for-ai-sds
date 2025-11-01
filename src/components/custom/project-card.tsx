@@ -31,7 +31,7 @@ export interface ProjectCardProps {
 
 const statusConfig = {
 	normal: {
-		borderClass: "border-neutral-700 hover:border-neutral-600",
+		borderClass: "border-border hover:border-primary/40",
 		badgeVariant: "default" as const,
 		animation: "",
 	},
@@ -75,7 +75,9 @@ export function ProjectCard({
 				{/* Header */}
 				<div className="flex items-start justify-between">
 					<div className="flex-1 space-y-1">
-						<h3 className="font-semibold text-lg leading-none">{name}</h3>
+						<h3 className="font-semibold text-foreground text-lg leading-none">
+							{name}
+						</h3>
 						<p className="text-muted-foreground text-sm">{team}</p>
 					</div>
 					<Badge variant={config.badgeVariant} className="ml-2">
@@ -90,7 +92,7 @@ export function ProjectCard({
 				{/* Cost */}
 				<div className="space-y-1">
 					<p className="text-muted-foreground text-sm">현재 비용</p>
-					<p className="font-bold font-mono text-3xl">{cost}</p>
+					<p className="font-bold font-mono text-3xl text-foreground">{cost}</p>
 				</div>
 
 				{/* Trend */}
