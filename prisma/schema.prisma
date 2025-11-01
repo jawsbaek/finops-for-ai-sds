@@ -2,103 +2,143 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-    provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-    provider = "postgresql"
-    // NOTE: When using mysql or sqlserver, uncomment the @db.Text annotations in model Account below
-    // Further reading:
-    // https://next-auth.js.org/adapters/prisma#create-the-prisma-schema
-    // https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference#string
-    url      = env("DATABASE_URL")
+  provider = "postgresql"
+  // NOTE: When using mysql or sqlserver, uncomment the @db.Text annotations in model Account below
+  // Further reading:
+  // https://next-auth.js.org/adapters/prisma#create-the-prisma-schema
+  // https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference#string
+  url      = env("DATABASE_URL")
 }
 
 // FinOps for AI - Core Data Models
 
 model User {
-    id            String    @id @default(cuid())
-    email         String    @unique
-    passwordHash  String    @map("password_hash")
-    name          String?
-    createdAt     DateTime  @default(now()) @map("created_at")
-    updatedAt     DateTime  @updatedAt @map("updated_at")
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-    sessions      Session[]
-    teamMemberships TeamMember[]
+  sessions        Session[]
+  teamMemberships TeamMember[]
 
-    @@index([email])
-    @@map("users")
+  @@index([email])
+  @@map("users")
 }
 
 model Session {
-    id           String   @id @default(cuid())
-    sessionToken String   @unique @map("session_token")
-    userId       String   @map("user_id")
-    expires      DateTime
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
 
-    user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@index([userId])
-    @@map("sessions")
+  @@index([userId])
+  @@map("sessions")
 }
 
 model Team {
-    id        String   @id @default(cuid())
-    name      String
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-    members   TeamMember[]
-    projects  Project[]
-    apiKeys   ApiKey[]
+  members  TeamMember[]
+  projects Project[]
+  apiKeys  ApiKey[]
+  costData CostData[]
 
-    @@map("teams")
+  @@map("teams")
 }
 
 model TeamMember {
-    id        String   @id @default(cuid())
-    teamId    String   @map("team_id")
-    userId    String   @map("user_id")
-    role      String   @default("member") // 'owner', 'admin', 'member'
-    createdAt DateTime @default(now()) @map("created_at")
+  id        String   @id @default(cuid())
+  teamId    String   @map("team_id")
+  userId    String   @map("user_id")
+  role      String   @default("member") // 'owner', 'admin', 'member'
+  createdAt DateTime @default(now()) @map("created_at")
 
-    team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
-    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@unique([teamId, userId])
-    @@index([userId])
-    @@map("team_members")
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@map("team_members")
 }
 
 model Project {
-    id          String   @id @default(cuid())
-    teamId      String   @map("team_id")
-    name        String
-    description String?
-    createdAt   DateTime @default(now()) @map("created_at")
-    updatedAt   DateTime @updatedAt @map("updated_at")
+  id          String   @id @default(cuid())
+  teamId      String   @map("team_id")
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-    team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team     Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  costData CostData[]
 
-    @@index([teamId])
-    @@map("projects")
+  @@index([teamId])
+  @@map("projects")
 }
 
 model ApiKey {
-    id               String   @id @default(cuid())
-    teamId           String   @map("team_id")
-    provider         String   // 'openai', 'aws', 'azure', etc.
-    encryptedKey     String   @map("encrypted_key") @db.Text
-    encryptedDataKey String   @map("encrypted_data_key") @db.Text
-    iv               String   // Initialization vector for AES encryption
-    isActive         Boolean  @default(true) @map("is_active")
-    createdAt        DateTime @default(now()) @map("created_at")
-    updatedAt        DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(cuid())
+  teamId           String   @map("team_id")
+  provider         String // 'openai', 'aws', 'azure', etc.
+  encryptedKey     String   @map("encrypted_key") @db.Text
+  encryptedDataKey String   @map("encrypted_data_key") @db.Text
+  iv               String // Initialization vector for AES encryption
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
-    team             Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team     Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  costData CostData[]
 
-    @@index([teamId])
-    @@index([provider])
-    @@map("api_keys")
+  @@index([teamId])
+  @@index([provider])
+  @@map("api_keys")
+}
+
+model CostData {
+  id        String   @id @default(cuid())
+  teamId    String   @map("team_id")
+  projectId String?  @map("project_id")
+  apiKeyId  String   @map("api_key_id")
+  provider  String // 'openai', 'aws', 'azure'
+  service   String // 'gpt-4', 'gpt-3.5-turbo', etc.
+  model     String?
+  tokens    Int?
+  cost      Decimal  @db.Decimal(10, 2)
+  date      DateTime @db.Date
+
+  // Novel Pattern 1: Context
+  taskType   String? @map("task_type")
+  userIntent String? @map("user_intent")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  team    Team     @relation(fields: [teamId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id])
+  apiKey  ApiKey   @relation(fields: [apiKeyId], references: [id])
+
+  @@index([teamId, date])
+  @@index([projectId, date])
+  @@map("cost_data")
+}
+
+model CronLog {
+  id         String   @id @default(cuid())
+  jobName    String   @map("job_name")
+  date       String // YYYY-MM-DD
+  executedAt DateTime @default(now()) @map("executed_at")
+
+  @@unique([jobName, date])
+  @@map("cron_logs")
 }
