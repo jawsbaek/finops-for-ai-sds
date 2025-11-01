@@ -61,17 +61,17 @@ export default function LoginPage() {
 	};
 
 	return (
-		<div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
+		<div className="flex min-h-screen items-center justify-center bg-background px-4 py-12 sm:px-6 lg:px-8">
 			<div className="w-full max-w-md space-y-8">
 				<div>
-					<h2 className="mt-6 text-center font-bold text-3xl text-gray-900 tracking-tight">
+					<h2 className="mt-6 text-center font-bold text-3xl text-foreground tracking-tight">
 						Sign in to your account
 					</h2>
-					<p className="mt-2 text-center text-gray-600 text-sm">
+					<p className="mt-2 text-center text-muted-foreground text-sm">
 						Or{" "}
 						<a
 							href="/signup"
-							className="font-medium text-blue-600 hover:text-blue-500"
+							className="font-medium text-primary hover:text-primary-dark"
 						>
 							create a new account
 						</a>
@@ -80,8 +80,8 @@ export default function LoginPage() {
 
 				<form className="mt-8 space-y-6" onSubmit={handleSubmit}>
 					{errors.general && (
-						<div className="rounded-md bg-red-50 p-4">
-							<p className="text-red-800 text-sm">{errors.general}</p>
+						<div className="rounded-md border border-error/30 bg-error/10 p-4">
+							<p className="text-error text-sm">{errors.general}</p>
 						</div>
 					)}
 
@@ -98,11 +98,11 @@ export default function LoginPage() {
 								required
 								value={email}
 								onChange={(e) => setEmail(e.target.value)}
-								className="relative block w-full rounded-t-md border-0 px-3 py-2 text-gray-900 ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-blue-600 focus:ring-inset sm:text-sm sm:leading-6"
+								className="relative block w-full rounded-t-md border-0 bg-card px-3 py-2 text-foreground ring-1 ring-border ring-inset placeholder:text-muted-foreground focus:z-10 focus:ring-2 focus:ring-primary focus:ring-inset sm:text-sm sm:leading-6"
 								placeholder="Email address"
 							/>
 							{errors.email && (
-								<p className="mt-1 text-red-600 text-sm">{errors.email}</p>
+								<p className="mt-1 text-error text-sm">{errors.email}</p>
 							)}
 						</div>
 						<div>
@@ -117,11 +117,11 @@ export default function LoginPage() {
 								required
 								value={password}
 								onChange={(e) => setPassword(e.target.value)}
-								className="relative block w-full rounded-b-md border-0 px-3 py-2 text-gray-900 ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-blue-600 focus:ring-inset sm:text-sm sm:leading-6"
+								className="relative block w-full rounded-b-md border-0 bg-card px-3 py-2 text-foreground ring-1 ring-border ring-inset placeholder:text-muted-foreground focus:z-10 focus:ring-2 focus:ring-primary focus:ring-inset sm:text-sm sm:leading-6"
 								placeholder="Password"
 							/>
 							{errors.password && (
-								<p className="mt-1 text-red-600 text-sm">{errors.password}</p>
+								<p className="mt-1 text-error text-sm">{errors.password}</p>
 							)}
 						</div>
 					</div>
@@ -130,7 +130,7 @@ export default function LoginPage() {
 						<button
 							type="submit"
 							disabled={isLoading}
-							className="group relative flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 font-semibold text-sm text-white hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+							className="group relative flex w-full justify-center rounded-md bg-primary px-3 py-2 font-semibold text-primary-foreground text-sm hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							{isLoading ? "Signing in..." : "Sign in"}
 						</button>

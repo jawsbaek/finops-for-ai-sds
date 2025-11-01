@@ -19,7 +19,8 @@
 		"test": "vitest",
 		"test:ui": "vitest --ui",
 		"test:coverage": "vitest --coverage",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"validate:colors": "bun run scripts/validate-colors.ts"
 	},
 	"dependencies": {
 		"@auth/prisma-adapter": "^2.7.2",
