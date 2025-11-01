@@ -38,6 +38,7 @@ interface CollectedCostData {
 	tokens: number;
 	cost: number; // in dollars
 	date: Date;
+	snapshotId: string; // OpenAI snapshot_id for deduplication
 }
 
 /**
@@ -182,6 +183,7 @@ export async function collectDailyCosts(
 					tokens: usage.n_context_tokens + usage.n_generated_tokens,
 					cost: usage.cost_in_cents / 100, // Convert cents to dollars
 					date: new Date(date),
+					snapshotId: usage.snapshot_id, // For deduplication
 				});
 			}
 		} catch (error) {
@@ -241,8 +243,9 @@ export async function storeCostData(
 				tokens: record.tokens,
 				cost: record.cost,
 				date: record.date,
+				snapshotId: record.snapshotId,
 			})),
-			skipDuplicates: true, // Skip if already exists
+			skipDuplicates: true, // Skip if already exists (now works with unique constraint)
 		});
 
 		totalCreated += result.count;
