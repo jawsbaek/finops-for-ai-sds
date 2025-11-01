@@ -2,6 +2,7 @@
 
 import { CostChart, type CostDataPoint } from "@/components/custom";
 import { StatCard } from "@/components/custom/stat-card";
+import { ConfirmDisableKeyDialog } from "@/components/dialogs/ConfirmDisableKeyDialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,14 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, DollarSign, Loader2, Save, TrendingUp } from "lucide-react";
+import {
+	ArrowLeft,
+	DollarSign,
+	Loader2,
+	Save,
+	ShieldAlert,
+	TrendingUp,
+} from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -33,6 +41,13 @@ export default function ProjectDetailPage() {
 	const [successCount, setSuccessCount] = useState<string>("");
 	const [feedbackScore, setFeedbackScore] = useState<string>("");
 
+	// State for disable API key dialog
+	const [disableDialogOpen, setDisableDialogOpen] = useState(false);
+	const [selectedApiKeyId, setSelectedApiKeyId] = useState<string | null>(null);
+	const [selectedApiKeyLast4, setSelectedApiKeyLast4] = useState<
+		string | undefined
+	>(undefined);
+
 	// Get utils at component top level
 	const utils = api.useUtils();
 
@@ -45,6 +60,25 @@ export default function ProjectDetailPage() {
 		},
 		onError: (error) => {
 			toast.error("성과 메트릭 업데이트 실패", {
+				description: error.message,
+			});
+		},
+	});
+
+	// Disable API key mutation
+	const disableApiKey = api.cost.disableApiKey.useMutation({
+		onSuccess: () => {
+			toast.success("API 키가 비활성화되었습니다", {
+				description: "이 키를 사용하는 모든 요청이 차단됩니다",
+			});
+			setDisableDialogOpen(false);
+			setSelectedApiKeyId(null);
+			setSelectedApiKeyLast4(undefined);
+			// Refetch project data to update API key status
+			void utils.project.getById.invalidate({ id: projectId });
+		},
+		onError: (error) => {
+			toast.error("API 키 비활성화 실패", {
 				description: error.message,
 			});
 		},
@@ -72,6 +106,22 @@ export default function ProjectDetailPage() {
 			projectId,
 			successCount: count,
 			feedbackScore: score,
+		});
+	};
+
+	// Handle disable API key
+	const handleOpenDisableDialog = (apiKeyId: string, last4: string) => {
+		setSelectedApiKeyId(apiKeyId);
+		setSelectedApiKeyLast4(last4);
+		setDisableDialogOpen(true);
+	};
+
+	const handleConfirmDisable = (reason: string) => {
+		if (!selectedApiKeyId) return;
+
+		disableApiKey.mutate({
+			apiKeyId: selectedApiKeyId,
+			reason,
 		});
 	};
 
@@ -241,6 +291,97 @@ export default function ProjectDetailPage() {
 				</div>
 			</div>
 
+			{/* API Key Management Section */}
+			<Card className="p-6">
+				<div className="flex items-center justify-between">
+					<div>
+						<h3 className="font-semibold text-foreground text-lg">
+							긴급 API 키 관리
+						</h3>
+						<p className="mt-1 text-muted-foreground text-sm">
+							비용 폭주 발생 시 팀의 API 키를 즉시 비활성화할 수 있습니다
+						</p>
+					</div>
+				</div>
+
+				{project.team.apiKeys && project.team.apiKeys.length > 0 ? (
+					<div className="mt-6 space-y-3">
+						{project.team.apiKeys.map((apiKey) => (
+							<div
+								key={apiKey.id}
+								className="flex items-center justify-between rounded-lg border border-border bg-card p-4"
+							>
+								<div className="space-y-1">
+									<div className="flex items-center gap-2">
+										<p className="font-medium text-foreground text-sm capitalize">
+											{apiKey.provider} API Key
+										</p>
+										{apiKey.isActive ? (
+											<span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 font-medium text-success text-xs">
+												<span className="h-1.5 w-1.5 rounded-full bg-success" />
+												활성
+											</span>
+										) : (
+											<span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-medium text-muted-foreground text-xs">
+												<span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+												비활성
+											</span>
+										)}
+									</div>
+									<p className="font-mono text-muted-foreground text-xs">
+										키: ...{apiKey.last4}
+									</p>
+									<p className="text-muted-foreground text-xs">
+										생성일:{" "}
+										{new Date(apiKey.createdAt).toLocaleDateString("ko-KR", {
+											year: "numeric",
+											month: "long",
+											day: "numeric",
+										})}
+									</p>
+								</div>
+								<Button
+									variant="destructive"
+									size="sm"
+									onClick={() =>
+										handleOpenDisableDialog(apiKey.id, apiKey.last4)
+									}
+									disabled={!apiKey.isActive || disableApiKey.isPending}
+									title={
+										apiKey.isActive
+											? "이 API 키를 즉시 비활성화합니다"
+											: "이미 비활성화된 API 키입니다"
+									}
+								>
+									<ShieldAlert className="mr-2 h-4 w-4" />
+									{apiKey.isActive ? "비활성화" : "비활성화됨"}
+								</Button>
+							</div>
+						))}
+					</div>
+				) : (
+					<div className="mt-6 flex flex-col items-center justify-center rounded-lg border border-border border-dashed py-12">
+						<ShieldAlert className="mb-3 h-10 w-10 text-muted-foreground" />
+						<p className="text-center text-muted-foreground text-sm">
+							등록된 API 키가 없습니다
+						</p>
+					</div>
+				)}
+
+				{/* Information */}
+				<div className="mt-6 rounded-lg border border-border bg-muted p-4">
+					<p className="font-semibold text-foreground text-sm">참고사항</p>
+					<ul className="mt-2 ml-4 list-disc space-y-1 text-muted-foreground text-xs">
+						<li>
+							API 키 비활성화 시 이 키를 사용하는 모든 애플리케이션이 즉시
+							중단됩니다
+						</li>
+						<li>비활성화 이벤트는 감사 로그에 자동으로 기록됩니다</li>
+						<li>팀 Slack 채널로 비활성화 알림이 발송됩니다</li>
+					</ul>
+				</div>
+			</Card>
+
 			{/* Performance Metrics Section - Editable */}
 			<Card className="p-6">
 				<div className="flex items-center justify-between">
@@ -321,6 +462,15 @@ export default function ProjectDetailPage() {
 					</Button>
 				</div>
 			</Card>
+
+			{/* Confirm Disable Dialog */}
+			<ConfirmDisableKeyDialog
+				open={disableDialogOpen}
+				onOpenChange={setDisableDialogOpen}
+				onConfirm={handleConfirmDisable}
+				isLoading={disableApiKey.isPending}
+				apiKeyLast4={selectedApiKeyLast4}
+			/>
 		</div>
 	);
 }

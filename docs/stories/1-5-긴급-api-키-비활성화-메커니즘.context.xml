@@ -1,0 +1,260 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>5</storyId>
+    <title>긴급 API 키 비활성화 메커니즘</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-02</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-5-긴급-api-키-비활성화-메커니즘.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>FinOps 관리자</asA>
+    <iWant>비용 폭주 발생 시 해당 프로젝트의 API 키를 즉시 비활성화하여</iWant>
+    <soThat>추가 비용 손실을 즉시 차단할 수 있다</soThat>
+    <tasks>
+- Task 1: API 키 비활성화 tRPC endpoint 구현 (AC: #3, #5)
+  - src/server/api/routers/cost.ts에 disableApiKey mutation 추가
+  - ApiKey 모델의 is_active 필드를 false로 업데이트
+  - AuditLog 테이블 생성 및 이벤트 기록 로직 구현
+  - 입력 검증: apiKeyId, reason (필수)
+  - 팀 권한 검증 (해당 API 키가 사용자의 팀 소유인지)
+
+- Task 2: Prisma schema 업데이트 및 마이그레이션 (AC: #5)
+  - AuditLog 모델 추가 (user_id, action_type, resource_id, metadata, timestamp)
+  - bun prisma migrate dev 실행
+  - bun prisma generate 실행
+
+- Task 3: 프로젝트 상세 페이지 UI 구현 (AC: #1, #2)
+  - "API 키 비활성화" 버튼 컴포넌트 추가
+  - 확인 다이얼로그 컴포넌트 생성 (shadcn/ui Dialog + AlertDialog)
+  - Type-to-confirm 패턴 구현 ("차단" 입력 필수)
+  - 비활성화 사유 입력 텍스트 영역
+  - tRPC mutation 호출 및 에러 핸들링
+
+- Task 4: API 키 차단 미들웨어 구현 (AC: #4)
+  - Prisma 미들웨어 또는 Cost Collector에서 is_active 체크
+  - is_active = false인 키 사용 시도는 즉시 거부
+  - 에러 응답: "이 API 키는 비활성화되었습니다"
+  - Sentry로 차단 이벤트 추적
+
+- Task 5: Slack 알림 전송 (AC: #3)
+  - API 키 비활성화 시 팀 Slack 채널에 알림 발송
+  - 메시지 포맷: "⚠️ [팀명] API 키 비활성화 - 사유: {reason}"
+  - Slack webhook 재사용 (Story 1.4에서 구현)
+
+- Task 6: 통합 테스트 및 검증
+  - tRPC disableApiKey mutation 단위 테스트
+  - AuditLog 기록 검증 테스트
+  - UI 확인 다이얼로그 E2E 테스트 (Playwright)
+  - 비활성화된 키 사용 시도 테스트 (차단 확인)
+  - TypeScript type checking passed
+  - Production build successful
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. 프로젝트 상세 페이지에 "API 키 비활성화" 버튼이 표시되어야 한다
+2. 비활성화 버튼 클릭 시 확인 팝업이 표시되어야 한다 ("이 키를 사용하는 모든 애플리케이션이 중단됩니다")
+3. 확인 시 시스템은 해당 API 키를 즉시 비활성화 상태로 변경해야 한다 (FR005)
+4. 비활성화된 API 키 사용 시도는 시스템에서 차단되어야 한다
+5. API 키 비활성화 이벤트는 audit_log 테이블에 기록되어야 한다 (누가, 언제, 왜)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>Functional Requirements - FR005</section>
+        <snippet>시스템은 임계값 초과 시 관리자 승인 전까지 해당 OpenAI API 키를 자동으로 비활성화할 수 있어야 한다</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>User Journeys - 비용 급증 감지 및 즉시 대응</section>
+        <snippet>대시보드에서 "API 키 비활성화" 버튼 클릭 → 확인 팝업 → 즉시 차단 → 추가 손실 방지</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Breakdown</title>
+        <section>Story 1.5: 긴급 API 키 비활성화 메커니즘</section>
+        <snippet>FinOps 관리자가 비용 폭주 발생 시 해당 프로젝트의 API 키를 즉시 비활성화하여 추가 비용 손실을 즉시 차단</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-1.md</path>
+        <title>Epic 1 Technical Specification</title>
+        <section>Workflows and Sequencing - Workflow 4</section>
+        <snippet>사용자 대시보드 → API 키 비활성화 버튼 클릭 → ConfirmationModal (Type-to-confirm) → tRPC cost.disableApiKey 호출 → api_keys.is_active = false 업데이트 → audit_log 기록 → Slack 알림</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-1.md</path>
+        <title>Epic 1 Technical Specification</title>
+        <section>Data Models - ApiKey</section>
+        <snippet>ApiKey 모델에 is_active Boolean 필드, encrypted_key, team_id 관계, onDelete: Cascade</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-1.md</path>
+        <title>Epic 1 Technical Specification</title>
+        <section>APIs and Interfaces - costRouter</section>
+        <snippet>cost.disableApiKey mutation: apiKeyId와 reason 입력, protectedProcedure, 권한 검증, audit log 생성, Slack 알림</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Implementation Patterns - Type-to-Confirm</section>
+        <snippet>파괴적 작업에 대한 강력한 확인 패턴. 사용자가 정확한 문자열 입력 필요. GitHub, AWS 등에서 사용</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Data Architecture - Prisma Schema</section>
+        <snippet>ApiKey 모델: is_active Boolean @default(true), team 관계, KMS 암호화 필드</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/1-4-실시간-비용-임계값-모니터링-및-알림.md</path>
+        <title>Story 1.4 - 실시간 비용 임계값 모니터링</title>
+        <section>Learnings from Previous Story</section>
+        <snippet>Slack webhook service 사용 가능 (src/lib/services/slack/webhook.ts), tRPC protectedProcedure 패턴, Sonner toast 라이브러리, Design system semantic colors</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/server/api/routers/cost.ts</path>
+        <kind>tRPC router</kind>
+        <symbol>costRouter</symbol>
+        <lines>15-279</lines>
+        <reason>Existing cost router where disableApiKey mutation will be added. Already has protectedProcedure patterns and team access validation</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/services/slack/webhook.ts</path>
+        <kind>service</kind>
+        <symbol>sendCostAlert, retryWithBackoff</symbol>
+        <lines>25-120</lines>
+        <reason>Reusable Slack webhook service with retry logic. Will add sendDisableNotification function using same pattern</reason>
+      </artifact>
+      <artifact>
+        <path>prisma/schema.prisma</path>
+        <kind>database schema</kind>
+        <symbol>ApiKey model</symbol>
+        <lines>104-121</lines>
+        <reason>ApiKey model already has isActive field. Need to add AuditLog model for tracking disable events</reason>
+      </artifact>
+      <artifact>
+        <path>src/server/db.ts</path>
+        <kind>database client</kind>
+        <symbol>db</symbol>
+        <lines>1-18</lines>
+        <reason>Prisma client instance. Will add middleware here for isActive checking</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/ui/dialog.tsx</path>
+        <kind>UI component</kind>
+        <symbol>Dialog, DialogContent</symbol>
+        <lines>-</lines>
+        <reason>shadcn/ui Dialog component available for confirmation modal</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/ui/button.tsx</path>
+        <kind>UI component</kind>
+        <symbol>Button</symbol>
+        <lines>-</lines>
+        <reason>Button component with variant="destructive" for disable action</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <framework name="Next.js" version="^15.2.3" />
+      <framework name="React" version="^19.0.0" />
+      <framework name="TypeScript" version="^5.8.2" />
+      <api>
+        <package name="@trpc/server" version="^11.0.0" />
+        <package name="@trpc/client" version="^11.0.0" />
+        <package name="@trpc/react-query" version="^11.0.0" />
+        <package name="@tanstack/react-query" version="^5.69.0" />
+      </api>
+      <database>
+        <package name="@prisma/client" version="^6.5.0" />
+        <package name="prisma" version="^6.5.0" dev="true" />
+      </database>
+      <auth>
+        <package name="next-auth" version="5.0.0-beta.25" />
+        <package name="@auth/prisma-adapter" version="^2.7.2" />
+        <package name="bcrypt" version="^6.0.0" />
+      </auth>
+      <ui>
+        <package name="@radix-ui/react-dialog" version="^1.1.15" note="For confirmation modal" />
+        <package name="@radix-ui/react-slot" version="^1.2.3" />
+        <package name="tailwindcss" version="^4.0.15" />
+        <package name="class-variance-authority" version="^0.7.1" />
+        <package name="lucide-react" version="^0.552.0" />
+        <package name="sonner" version="^2.0.7" note="Toast notifications" />
+      </ui>
+      <security>
+        <package name="@aws-sdk/client-kms" version="^3.922.0" note="API key encryption" />
+      </security>
+      <utilities>
+        <package name="zod" version="^3.24.2" note="Schema validation" />
+        <package name="date-fns" version="^4.1.0" />
+        <package name="pino" version="^10.1.0" note="Logging" />
+      </utilities>
+      <testing>
+        <package name="vitest" version="^4.0.6" dev="true" />
+        <package name="@vitest/ui" version="^4.0.6" dev="true" />
+        <package name="happy-dom" version="^20.0.10" dev="true" />
+      </testing>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+- MUST use protectedProcedure pattern from existing routers for authentication
+- MUST verify team membership before allowing API key disable (check TeamMember table)
+- MUST use same Slack webhook retry pattern (exponential backoff: 1s, 2s, 4s)
+- MUST use Type-to-confirm pattern: user must type exact string "차단" to confirm
+- MUST use semantic colors: bg-destructive for disable button
+- MUST save audit log with userId, actionType="api_key_disabled", resourceType="api_key", resourceId, reason in metadata
+- MUST use Sonner toast for success/error feedback
+- MUST add Prisma middleware to check isActive before allowing API key usage
+- MUST use existing Dialog and Button UI components from shadcn/ui
+- File paths MUST be project-relative (no absolute paths)
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>cost.disableApiKey</name>
+      <kind>tRPC mutation</kind>
+      <signature>disableApiKey: protectedProcedure.input(z.object({ apiKeyId: z.string(), reason: z.string().min(1) })).mutation(async ({ input, ctx }) => Promise&lt;{ success: boolean }&gt;)</signature>
+      <path>src/server/api/routers/cost.ts</path>
+    </interface>
+    <interface>
+      <name>SlackDisableNotificationParams</name>
+      <kind>TypeScript interface</kind>
+      <signature>interface SlackDisableNotificationParams { teamName: string; apiKeyLast4: string; reason: string; userName: string; timestamp: string; }</signature>
+      <path>src/lib/services/slack/webhook.ts</path>
+    </interface>
+    <interface>
+      <name>AuditLog model</name>
+      <kind>Prisma model</kind>
+      <signature>model AuditLog { id: String @id @default(cuid()); userId: String; actionType: String; resourceType: String; resourceId: String; metadata: Json?; createdAt: DateTime @default(now()); }</signature>
+      <path>prisma/schema.prisma</path>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>Framework: Vitest 4.0.6 with happy-dom environment. Tests colocated with source in __tests__ directories or .test.ts files. Mock external dependencies (logger, fetch) using vi.mock(). Use vi.useFakeTimers() for testing async retry logic with exponential backoff. Test file naming: {module}.test.ts. Import pattern: import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'. Coverage provider: v8. Run with: bun test</standards>
+    <locations>
+      <pattern>src/lib/services/**/__tests__/*.test.ts</pattern>
+      <pattern>src/server/api/routers/**/*.test.ts</pattern>
+      <pattern>src/components/**/*.test.tsx</pattern>
+    </locations>
+    <ideas>
+      <test ac="3" description="Unit test: cost.disableApiKey mutation with valid team access should update isActive to false and return success" />
+      <test ac="3" description="Unit test: cost.disableApiKey mutation with invalid team access should throw FORBIDDEN error" />
+      <test ac="5" description="Unit test: AuditLog record created with correct userId, actionType='api_key_disabled', resourceId=apiKeyId, metadata contains reason" />
+      <test ac="3" description="Integration test: Slack notification sent with correct message format including apiKeyLast4, reason, userName, timestamp" />
+      <test ac="4" description="Unit test: Prisma middleware blocks API key usage when isActive=false" />
+      <test ac="1,2" description="E2E test: Playwright test for Type-to-confirm dialog - verify button disabled until exact string '차단' entered" />
+      <test ac="1,2,3" description="E2E test: Complete flow - click disable button → enter confirmation → verify toast success → verify API key isActive=false in DB" />
+    </ideas>
+  </tests>
+</story-context>

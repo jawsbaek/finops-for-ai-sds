@@ -88,3 +88,70 @@ export async function sendCostAlert(
 		},
 	);
 }
+
+export interface SlackDisableNotificationParams {
+	teamName: string;
+	apiKeyLast4: string;
+	reason: string;
+	userName: string;
+	timestamp: string;
+}
+
+/**
+ * Send API key disable notification to Slack
+ *
+ * Notifies team that an API key has been disabled
+ */
+export async function sendDisableNotification(
+	params: SlackDisableNotificationParams,
+): Promise<void> {
+	const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+
+	if (!webhookUrl) {
+		logger.warn(
+			"SLACK_WEBHOOK_URL not configured, skipping Slack notification",
+		);
+		return;
+	}
+
+	const payload = {
+		text: `⚠️ [${params.teamName}] API 키 비활성화`,
+		blocks: [
+			{
+				type: "section",
+				text: {
+					type: "mrkdwn",
+					text: `*⚠️ API 키 비활성화*\n\n*API 키*: ...${params.apiKeyLast4}\n*비활성화 사유*: ${params.reason}\n*담당자*: ${params.userName}\n*시각*: ${params.timestamp}`,
+				},
+			},
+		],
+	};
+
+	await retryWithBackoff(
+		async () => {
+			const response = await fetch(webhookUrl, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(payload),
+			});
+
+			if (!response.ok) {
+				const errorText = await response.text();
+				throw new Error(
+					`Slack webhook failed: ${response.status} ${errorText}`,
+				);
+			}
+
+			logger.info(
+				{ teamName: params.teamName },
+				"Slack disable notification sent",
+			);
+		},
+		{
+			context: "Slack webhook",
+			finalErrorMessage: "Slack webhook failed after all retries",
+		},
+	);
+}
