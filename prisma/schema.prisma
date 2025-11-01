@@ -14,61 +14,91 @@ datasource db {
     url      = env("DATABASE_URL")
 }
 
-model Post {
-    id        Int      @id @default(autoincrement())
-    name      String
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+// FinOps for AI - Core Data Models
 
-    createdBy   User   @relation(fields: [createdById], references: [id])
-    createdById String
+model User {
+    id            String    @id @default(cuid())
+    email         String    @unique
+    passwordHash  String    @map("password_hash")
+    name          String?
+    createdAt     DateTime  @default(now()) @map("created_at")
+    updatedAt     DateTime  @updatedAt @map("updated_at")
 
-    @@index([name])
-}
+    sessions      Session[]
+    teamMemberships TeamMember[]
 
-// Necessary for Next auth
-model Account {
-    id                       String  @id @default(cuid())
-    userId                   String
-    type                     String
-    provider                 String
-    providerAccountId        String
-    refresh_token            String? // @db.Text
-    access_token             String? // @db.Text
-    expires_at               Int?
-    token_type               String?
-    scope                    String?
-    id_token                 String? // @db.Text
-    session_state            String?
-    user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-    refresh_token_expires_in Int?
-
-    @@unique([provider, providerAccountId])
+    @@index([email])
+    @@map("users")
 }
 
 model Session {
     id           String   @id @default(cuid())
-    sessionToken String   @unique
-    userId       String
+    sessionToken String   @unique @map("session_token")
+    userId       String   @map("user_id")
     expires      DateTime
+
     user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([userId])
+    @@map("sessions")
 }
 
-model User {
-    id            String    @id @default(cuid())
-    name          String?
-    email         String?   @unique
-    emailVerified DateTime?
-    image         String?
-    accounts      Account[]
-    sessions      Session[]
-    posts         Post[]
+model Team {
+    id        String   @id @default(cuid())
+    name      String
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @updatedAt @map("updated_at")
+
+    members   TeamMember[]
+    projects  Project[]
+    apiKeys   ApiKey[]
+
+    @@map("teams")
 }
 
-model VerificationToken {
-    identifier String
-    token      String   @unique
-    expires    DateTime
+model TeamMember {
+    id        String   @id @default(cuid())
+    teamId    String   @map("team_id")
+    userId    String   @map("user_id")
+    role      String   @default("member") // 'owner', 'admin', 'member'
+    createdAt DateTime @default(now()) @map("created_at")
 
-    @@unique([identifier, token])
+    team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([teamId, userId])
+    @@index([userId])
+    @@map("team_members")
+}
+
+model Project {
+    id          String   @id @default(cuid())
+    teamId      String   @map("team_id")
+    name        String
+    description String?
+    createdAt   DateTime @default(now()) @map("created_at")
+    updatedAt   DateTime @updatedAt @map("updated_at")
+
+    team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+    @@index([teamId])
+    @@map("projects")
+}
+
+model ApiKey {
+    id               String   @id @default(cuid())
+    teamId           String   @map("team_id")
+    provider         String   // 'openai', 'aws', 'azure', etc.
+    encryptedKey     String   @map("encrypted_key") @db.Text
+    encryptedDataKey String   @map("encrypted_data_key") @db.Text
+    iv               String   // Initialization vector for AES encryption
+    isActive         Boolean  @default(true) @map("is_active")
+    createdAt        DateTime @default(now()) @map("created_at")
+    updatedAt        DateTime @updatedAt @map("updated_at")
+
+    team             Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+    @@index([teamId])
+    @@index([provider])
+    @@map("api_keys")
 }
