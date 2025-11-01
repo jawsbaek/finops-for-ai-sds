@@ -17,6 +17,19 @@ export const env = createEnv({
 		NODE_ENV: z
 			.enum(["development", "test", "production"])
 			.default("development"),
+
+		// AWS KMS for API key encryption
+		AWS_REGION: z.string().default("us-east-1"),
+		AWS_ACCESS_KEY_ID: z.string().optional(),
+		AWS_SECRET_ACCESS_KEY: z.string().optional(),
+		AWS_KMS_KEY_ID: z.string().optional(),
+
+		// Cron job security
+		CRON_SECRET: z.string().optional(),
+
+		// Email notifications
+		RESEND_API_KEY: z.string().optional(),
+		ADMIN_EMAIL: z.string().email().optional(),
 	},
 
 	/**
@@ -38,6 +51,13 @@ export const env = createEnv({
 		AUTH_DISCORD_SECRET: process.env.AUTH_DISCORD_SECRET,
 		DATABASE_URL: process.env.DATABASE_URL,
 		NODE_ENV: process.env.NODE_ENV,
+		AWS_REGION: process.env.AWS_REGION,
+		AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
+		AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
+		AWS_KMS_KEY_ID: process.env.AWS_KMS_KEY_ID,
+		CRON_SECRET: process.env.CRON_SECRET,
+		RESEND_API_KEY: process.env.RESEND_API_KEY,
+		ADMIN_EMAIL: process.env.ADMIN_EMAIL,
 	},
 	/**
 	 * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

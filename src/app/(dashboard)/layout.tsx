@@ -52,19 +52,19 @@ export default async function DashboardLayout({
 								Dashboard
 							</a>
 							<a
-								href="#"
+								href="/dashboard/cost-analysis"
 								className="block rounded-md px-3 py-2 font-medium text-gray-600 text-sm hover:bg-gray-50"
 							>
 								Cost Analysis
 							</a>
 							<a
-								href="#"
+								href="/dashboard/api-keys"
 								className="block rounded-md px-3 py-2 font-medium text-gray-600 text-sm hover:bg-gray-50"
 							>
 								API Keys
 							</a>
 							<a
-								href="#"
+								href="/dashboard/settings"
 								className="block rounded-md px-3 py-2 font-medium text-gray-600 text-sm hover:bg-gray-50"
 							>
 								Settings

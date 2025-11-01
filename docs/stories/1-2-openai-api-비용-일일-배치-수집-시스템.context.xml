@@ -1,0 +1,284 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>2</storyId>
+    <title>OpenAI API 비용 일일 배치 수집 시스템</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-01</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-2-openai-api-비용-일일-배치-수집-시스템.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>FinOps 관리자</asA>
+    <iWant>OpenAI API 사용 내역을 매일 자동으로 수집하여</iWant>
+    <soThat>전일 총 비용을 확인하고 프로젝트별 지출을 파악할 수 있다</soThat>
+    <tasks>
+      - Task 1: Vercel Cron Job 엔드포인트 생성 (src/app/api/cron/daily-batch/route.ts)
+      - Task 2: OpenAI Cost Collector 서비스 구현 (src/lib/services/openai/cost-collector.ts)
+      - Task 3: KMS API 키 복호화 통합 (src/lib/services/encryption/kms-envelope.ts)
+      - Task 4: cost_data 테이블에 데이터 저장 (Prisma createMany)
+      - Task 5: tRPC costRouter 생성 및 비용 데이터 조회 API (src/server/api/routers/cost.ts)
+      - Task 6: 홈 대시보드 비용 카드 UI 구현 (src/components/custom/stat-card.tsx)
+      - Task 7: 데이터 수집 실패 시 알림 발송 (src/lib/services/email/notification.ts)
+      - Task 8: 통합 테스트 및 검증
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    1. 시스템은 매일 오전 9시 KST에 OpenAI API를 호출하여 전일 사용 내역을 가져와야 한다 (FR001)
+    2. 수집된 데이터는 cost_data 테이블에 저장되어야 한다 (날짜, API 키, 모델, 토큰 수, 비용)
+    3. 홈 화면에 "어제 총 비용" 및 "이번 주 총 비용"이 표시되어야 한다
+    4. 데이터 수집 실패 시 관리자에게 이메일 알림이 발송되어야 한다
+    5. API 자격증명은 AES-256으로 암호화되어 저장되어야 한다 (NFR004)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>Functional Requirements - Phase 1A</section>
+        <snippet>FR001: 시스템은 OpenAI API 사용량을 일일 배치(매일 오전 9시 KST)로 수집하고 전일 총 비용을 표시해야 한다. FR002: 각 API 호출에 대해 비용과 함께 컨텍스트(프로젝트명, 작업 유형)를 기록해야 한다.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>Non-Functional Requirements - Security</section>
+        <snippet>NFR004: 시스템은 모든 클라우드 제공사 API 자격증명을 AES-256으로 암호화하여 저장해야 한다.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>ADR-002: AWS KMS Envelope Encryption</section>
+        <snippet>AWS KMS로 Data Key를 생성하고, Data Key로 API 키를 AES-256-GCM 암호화. 저장: encrypted_key, encrypted_data_key, iv. FIPS 140-3 Level 3 HSM 보호, 키 회전 자동화, CloudTrail 감사 로그.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>ADR-003: Vercel Cron Jobs over BullMQ</section>
+        <snippet>Vercel Cron Jobs 채택 (Vercel Pro plan 필요). 추가 인프라 불필요, 네이티브 기능, vercel.json 설정. 제약: Serverless 함수 최대 실행 시간 5분 (Pro), best-effort 실행.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Novel Pattern Designs - Pattern 2: Architecture-based Attribution</section>
+        <snippet>API 키 격리 기반 자동 귀속. 팀별 고유 OpenAI API 키 발급, api_keys.team_id 외래 키로 자동 연결, 일일 배치에서 API 키로 팀 식별, 태그 불필요.</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-1.md</path>
+        <title>Epic 1 Technical Specification</title>
+        <section>Workflows and Sequencing - Workflow 1: 일일 비용 수집</section>
+        <snippet>매일 오전 9시 KST (Vercel Cron) → CRON_SECRET 검증 → Idempotency 체크 (cron_logs) → 팀의 API 키 조회 → KMS 복호화 → OpenAI API 호출 (전일 데이터) → cost_data 저장 (team_id 자동 귀속).</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-1.md</path>
+        <title>Epic 1 Technical Specification</title>
+        <section>APIs and Interfaces - External API Integrations</section>
+        <snippet>OpenAI Usage API: GET https://api.openai.com/v1/usage?date=YYYY-MM-DD, Authorization: Bearer {OPENAI_API_KEY}, 응답: model, n_requests, n_context_tokens, n_generated_tokens, cost_in_cents.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Breakdown</title>
+        <section>Story 1.2: OpenAI API 비용 일일 배치 수집 시스템</section>
+        <snippet>OpenAI API를 매일 자동으로 호출하여 전일 사용 내역을 수집. Cron job 또는 AWS EventBridge. Retry logic with exponential backoff. API 자격증명 AES-256 암호화 저장.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>prisma/schema.prisma</path>
+        <kind>schema</kind>
+        <symbol>User, Session, Team, TeamMember, Project, ApiKey</symbol>
+        <lines>19-104</lines>
+        <reason>Core data models available. ApiKey model includes KMS encryption fields (encryptedKey, encryptedDataKey, iv). Need to ADD cost_data model for this story.</reason>
+      </artifact>
+      <artifact>
+        <path>src/server/api/routers/auth.ts</path>
+        <kind>router</kind>
+        <symbol>authRouter</symbol>
+        <lines>all</lines>
+        <reason>Reference pattern for creating new costRouter. Shows how to use tRPC publicProcedure and protectedProcedure with Zod input validation.</reason>
+      </artifact>
+      <artifact>
+        <path>src/server/api/root.ts</path>
+        <kind>router</kind>
+        <symbol>appRouter</symbol>
+        <lines>all</lines>
+        <reason>Need to add costRouter to this root router following the pattern: cost: costRouter.</reason>
+      </artifact>
+      <artifact>
+        <path>src/server/auth/config.ts</path>
+        <kind>config</kind>
+        <symbol>authOptions</symbol>
+        <lines>all</lines>
+        <reason>Reference for CRON_SECRET Bearer token validation pattern. Use similar approach for Cron job endpoint authentication.</reason>
+      </artifact>
+      <artifact>
+        <path>src/server/db.ts</path>
+        <kind>service</kind>
+        <symbol>db (Prisma client)</symbol>
+        <lines>all</lines>
+        <reason>Prisma client singleton to use for all database operations (cost_data queries, team/apiKey queries).</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <dependency name="@prisma/client" version="^6.5.0" />
+        <dependency name="@trpc/server" version="^11.0.0" />
+        <dependency name="next" version="^15.2.3" />
+        <dependency name="zod" version="^3.24.2" />
+        <dependency name="bcrypt" version="^6.0.0" />
+        <dependency name="next-auth" version="5.0.0-beta.25" />
+
+        <!-- Packages NEEDED for this story (to be installed) -->
+        <dependency name="@aws-sdk/client-kms" version="^3.901.0" note="AWS KMS for envelope encryption" />
+        <dependency name="resend" version="^4.0.0" note="Email service for failure notifications" />
+        <dependency name="react-email" version="^3.0.0" note="Email templates" />
+        <dependency name="pino" version="^9.0.0" note="JSON structured logging" />
+        <dependency name="date-fns" version="^3.0.0" note="Date manipulation for KST timezone" />
+      </node>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - Vercel Cron Jobs: Best-effort execution (no guaranteed timing), max execution time 5 minutes (Vercel Pro)
+    - OpenAI Usage API: Data delayed 8-24 hours (not real-time), rate limit 60 requests/second
+    - AWS KMS: Decrypt cost $0.03/10,000 requests, cache decrypted keys in memory during cron execution
+    - Prisma createMany: Maximum 1,000 records per batch insert
+    - Database column naming: snake_case (via @map directive)
+    - tRPC router naming: camelCase procedures, singular router filenames
+    - File structure: src/lib/services/{domain}/ for business logic, src/app/api/cron/ for cron endpoints
+    - Error handling: Retry 3 times with exponential backoff (1s, 2s, 4s) for external APIs
+    - Idempotency: Use cron_logs table to prevent duplicate execution (unique constraint on job_name + date)
+    - Security: CRON_SECRET Bearer token validation, TLS 1.3 for all communications
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>OpenAI Usage API</name>
+      <kind>REST endpoint</kind>
+      <signature>GET https://api.openai.com/v1/usage?date=YYYY-MM-DD
+Authorization: Bearer {OPENAI_API_KEY}
+
+Response:
+{
+  "data": [
+    {
+      "aggregation_timestamp": 1234567890,
+      "snapshot_id": "abc123",
+      "model": "gpt-4",
+      "n_requests": 1000,
+      "n_context_tokens": 50000,
+      "n_generated_tokens": 10000,
+      "cost_in_cents": 12345
+    }
+  ]
+}</signature>
+      <path>External API - OpenAI Platform</path>
+    </interface>
+    <interface>
+      <name>KMS Envelope Encryption</name>
+      <kind>Service interface</kind>
+      <signature>class KMSEnvelopeEncryption {
+  async encrypt(plaintext: string): Promise&lt;{ ciphertext: string; encryptedDataKey: string; iv: string }&gt;
+  async decrypt(ciphertext: string, encryptedDataKey: string, iv: string): Promise&lt;string&gt;
+}
+
+// Usage for API key decryption:
+const kms = new KMSEnvelopeEncryption();
+const plainApiKey = await kms.decrypt(
+  apiKeyRecord.encryptedKey,
+  apiKeyRecord.encryptedDataKey,
+  apiKeyRecord.iv
+);</signature>
+      <path>src/lib/services/encryption/kms-envelope.ts (to be created)</path>
+    </interface>
+    <interface>
+      <name>costRouter tRPC API</name>
+      <kind>tRPC router</kind>
+      <signature>export const costRouter = createTRPCRouter({
+  // Get summary costs (yesterday, this week)
+  getSummary: protectedProcedure
+    .input(z.object({ teamId: z.string() }))
+    .query(async ({ input, ctx }) => {
+      return {
+        yesterdayCost: Decimal,
+        thisWeekCost: Decimal,
+        weeklyChange: number // percentage
+      };
+    }),
+
+  // Get recent costs for charts
+  getRecentCosts: protectedProcedure
+    .input(z.object({
+      teamId: z.string(),
+      days: z.number().default(7)
+    }))
+    .query(async ({ input, ctx }) => {
+      return CostData[];
+    })
+});</signature>
+      <path>src/server/api/routers/cost.ts (to be created)</path>
+    </interface>
+    <interface>
+      <name>Cron Job Endpoint</name>
+      <kind>HTTP endpoint</kind>
+      <signature>export async function GET(request: Request) {
+  // 1. Verify CRON_SECRET
+  const authHeader = request.headers.get('authorization');
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  // 2. Idempotency check
+  const today = new Date().toISOString().split('T')[0];
+  const existing = await db.cronLog.findUnique({
+    where: { jobName_date: { jobName: 'daily-batch', date: today } }
+  });
+  if (existing) {
+    return Response.json({ message: 'Already executed today' });
+  }
+
+  // 3. Execute cost collection
+  await collectDailyCosts();
+
+  // 4. Log execution
+  await db.cronLog.create({
+    data: { jobName: 'daily-batch', date: today }
+  });
+
+  return Response.json({ message: 'Success' });
+}</signature>
+      <path>src/app/api/cron/daily-batch/route.ts (to be created)</path>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      **Unit Tests (Vitest)**: Target 80% coverage for services. Test OpenAI API response parsing, retry logic, KMS encryption/decryption, tRPC procedures with Prisma mocks. Location: src/lib/services/**/__tests__/
+
+      **Integration Tests (Vitest + MSW)**: Test Cron job endpoint with CRON_SECRET validation, Idempotency checks, Prisma database operations. Mock OpenAI API and AWS KMS SDK.
+
+      **E2E Tests (Playwright)**: Test full user journey - manual cron trigger → dashboard displays costs. Verify data collection failure sends email notification.
+
+      **Frameworks**: Vitest for unit/integration, Playwright for E2E, MSW for API mocking, jest-axe for accessibility (WCAG 2.1 AA).
+    </standards>
+    <locations>
+      - src/lib/services/**/__tests__/ (unit tests)
+      - __tests__/integration/ (integration tests)
+      - __tests__/e2e/ (Playwright E2E tests)
+    </locations>
+    <ideas>
+      - AC #1: Unit test OpenAI API client - verify date formatting, error handling, retry logic
+      - AC #1: Integration test Cron endpoint - verify CRON_SECRET validation, idempotency check
+      - AC #2: Unit test cost data storage - verify batch insert, team_id mapping, date formatting
+      - AC #3: Integration test costRouter.getSummary - verify yesterday/week cost calculation
+      - AC #3: E2E test dashboard - verify cost cards display after cron execution
+      - AC #4: Unit test email notification - verify Resend API call, throttling logic
+      - AC #5: Unit test KMS encryption - verify encrypt/decrypt roundtrip, error handling
+      - Edge case: OpenAI API timeout - verify retry with exponential backoff
+      - Edge case: KMS decrypt failure - verify Sentry error logging, graceful degradation
+      - Edge case: Duplicate cron execution - verify idempotency prevents duplicate data
+    </ideas>
+  </tests>
+</story-context>
