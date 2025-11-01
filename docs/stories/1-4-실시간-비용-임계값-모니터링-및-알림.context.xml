@@ -1,0 +1,369 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>4</storyId>
+    <title>실시간 비용 임계값 모니터링 및 알림</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-02</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-4-실시간-비용-임계값-모니터링-및-알림.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>FinOps 관리자</asA>
+    <iWant>프로젝트별 일일/주간 비용 임계값을 설정하고 초과 시 즉시 알림을 받아</iWant>
+    <soThat>비용 폭주를 조기에 발견하고 신속히 대응할 수 있다</soThat>
+    <tasks>
+- Task 1: 비용 임계값 알림 tRPC router 생성 (AC: #1)
+  - src/server/api/routers/alert.ts 생성
+  - setThreshold 프로시저 구현 (일일/주간 임계값 설정)
+  - getAlerts 프로시저 구현 (프로젝트의 활성 임계값 조회)
+  - updateAlert 프로시저 구현 (임계값 수정)
+  - deleteAlert 프로시저 구현 (임계값 삭제/비활성화)
+  - src/server/api/root.ts에 alertRouter 추가
+
+- Task 2: Threshold Monitor 서비스 구현 (AC: #2)
+  - src/lib/services/monitoring/threshold-monitor.ts 생성
+  - checkThresholds 함수 구현 (모든 활성 프로젝트 임계값 검사)
+  - calculateCurrentCost 함수 구현 (일일/주간 비용 집계)
+  - Alert throttling 로직 구현 (1시간당 최대 1회)
+  - 데이터베이스 인덱스 최적화 (cost_data 조회 성능)
+
+- Task 3: Slack 알림 서비스 구현 (AC: #3, #4, #5)
+  - src/lib/services/slack/webhook.ts 생성
+  - sendCostAlert 함수 구현 (Slack webhook POST)
+  - Slack 메시지 포맷 구현 (Blocks API)
+  - "상세 보기" 버튼과 deep link 포함
+  - 에러 핸들링 및 재시도 로직 (3회, exponential backoff)
+
+- Task 4: Email 알림 서비스 구현 (AC: #3, #4, #5)
+  - src/lib/services/email/resend-client.ts 생성
+  - src/lib/services/email/templates/CostAlertEmail.tsx 생성 (React Email)
+  - sendCostAlertEmail 함수 구현 (Resend API)
+  - 이메일 템플릿: 프로젝트명, 현재 비용, 임계값, 초과율, 상세 보기 링크
+  - 에러 핸들링 (Resend API 실패 시 Sentry 로그)
+
+- Task 5: Vercel Cron Job 엔드포인트 구현 (AC: #2)
+  - src/app/api/cron/poll-threshold/route.ts 생성
+  - CRON_SECRET 검증 미들웨어
+  - Threshold Monitor 호출 (5분마다 실행)
+  - Alert 발송 (Slack + Email 병렬 호출)
+  - Alert throttling 상태 관리 (last_alert_sent_at 기록)
+  - 실행 로그 및 에러 추적 (Pino + Sentry)
+
+- Task 6: 프로젝트 설정 페이지 UI 구현 (AC: #1)
+  - src/app/(dashboard)/projects/[id]/settings/page.tsx 생성
+  - 임계값 설정 폼 컴포넌트 (일일/주간 선택, 금액 입력)
+  - tRPC api.alert.setThreshold.useMutation() 호출
+  - 현재 설정된 임계값 표시
+  - Toast 알림 (설정 성공/실패)
+
+- Task 7: vercel.json Cron 스케줄 추가 (AC: #2)
+  - vercel.json에 poll-threshold cron 추가
+  - Schedule: "*/5 * * * *" (5분마다)
+  - CRON_SECRET 환경 변수 설정 (openssl rand -base64 32)
+
+- Task 8: 통합 테스트 및 검증
+  - Threshold Monitor 단위 테스트 (Vitest)
+  - Alert 발송 통합 테스트 (MSW로 Slack/Resend API 모킹)
+  - E2E 테스트: 임계값 설정 → Cron 트리거 → 알림 확인
+  - NFR002 검증: 알림 지연 <5분 측정
+  - TypeScript type checking passed
+  - Production build successful
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. 프로젝트 설정 페이지에서 일일/주간 비용 임계값을 설정할 수 있어야 한다 (FR004)
+2. 시스템은 OpenAI API 비용 데이터를 5분마다 확인하여 임계값 초과 여부를 검사해야 한다
+3. 임계값 초과 시 1분 이내에 Slack 및 이메일 알림을 발송해야 한다 (NFR002, FR004)
+4. 알림 메시지는 "프로젝트명, 현재 비용, 임계값, 초과율"을 포함해야 한다
+5. 알림 메시지에 "상세 보기" 링크가 포함되어 대시보드로 즉시 이동할 수 있어야 한다
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>Phase 1A - Real-time Cost Runaway Prevention</section>
+        <snippet>FR004: 시스템은 프로젝트별 일일/주간 비용 임계값을 설정하고, 초과 시 즉시(&lt;1분) Slack/이메일 알림을 발송해야 한다. NFR002: 시스템은 비용 임계값 초과 감지 후 5분 이내에 알림을 발송해야 한다 (5분 폴링 주기).</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Communication Patterns - Slack Notifications</section>
+        <snippet>Slack 알림 포맷: Blocks API 사용. text: "🚨 [팀명] 비용 임계값 초과", 상세 보기 버튼 포함. React Email 템플릿으로 이메일 발송 (Resend API).</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-1.md</path>
+        <title>Epic Technical Specification</title>
+        <section>Workflow 2: 실시간 비용 폭주 방지</section>
+        <snippet>5분마다 (Vercel Cron) → GET /api/cron/poll-threshold → CRON_SECRET 검증 → 모든 활성 프로젝트 임계값 조회 (cost_alerts) → 현재 일일/주간 비용 집계 → IF 비용 &gt; 임계값: Slack webhook + Resend API 호출 + Throttling (1시간당 최대 1회).</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-1.md</path>
+        <title>Epic Technical Specification</title>
+        <section>APIs and Interfaces - alertRouter</section>
+        <snippet>alertRouter: setThreshold 프로시저 구현. Input: projectId (string), type (enum: "daily" | "weekly"), value (number, positive). Mutation으로 임계값 설정.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Implementation Patterns - Cron Job Security</section>
+        <snippet>Cron Job 보안: CRON_SECRET Bearer token 검증, Idempotency 체크, 실행 로그 및 에러 추적 (Pino + Sentry).</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>prisma/schema.prisma</path>
+        <kind>database schema</kind>
+        <symbol>CostAlert (model exists, needs last_alert_sent_at column)</symbol>
+        <lines>N/A - new model needed</lines>
+        <reason>Story 1.4 needs CostAlert model with threshold_type, threshold_value, is_active. May need last_alert_sent_at for throttling.</reason>
+      </artifact>
+      <artifact>
+        <path>src/server/api/routers/cost.ts</path>
+        <kind>tRPC router</kind>
+        <symbol>costRouter (existing)</symbol>
+        <lines>1-280</lines>
+        <reason>Existing pattern for protectedProcedure, team access verification, date-based cost queries. New alertRouter will follow same pattern.</reason>
+      </artifact>
+      <artifact>
+        <path>src/app/api/cron/daily-batch/route.ts</path>
+        <kind>cron endpoint</kind>
+        <symbol>GET handler (existing)</symbol>
+        <lines>38-169</lines>
+        <reason>Existing Cron Job pattern: CRON_SECRET verification (constantTimeCompare), Idempotency check (cron_logs), error handling, Pino logging. Reuse for poll-threshold endpoint.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/services/openai/cost-collector.ts</path>
+        <kind>service</kind>
+        <symbol>retryWithBackoff (function)</symbol>
+        <lines>51-76</lines>
+        <reason>Retry logic with exponential backoff (1s, 2s, 4s) for Slack/Resend API calls. Reuse pattern for alert notification services.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/services/email/notification.ts</path>
+        <kind>service</kind>
+        <symbol>sendCostCollectionFailureNotification</symbol>
+        <lines>N/A (file exists)</lines>
+        <reason>Existing email notification service using Resend. Pattern to follow for cost alert email notifications.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/services/encryption/kms-envelope.ts</path>
+        <kind>service</kind>
+        <symbol>KMSEnvelopeEncryption (class)</symbol>
+        <lines>N/A (file exists)</lines>
+        <reason>Not needed for Story 1.4 (no encryption), but available if API keys accessed during threshold monitoring.</reason>
+      </artifact>
+      <artifact>
+        <path>src/server/api/root.ts</path>
+        <kind>tRPC root router</kind>
+        <symbol>appRouter</symbol>
+        <lines>N/A</lines>
+        <reason>Need to add alertRouter to the root router exports.</reason>
+      </artifact>
+      <artifact>
+        <path>vercel.json</path>
+        <kind>configuration</kind>
+        <symbol>crons array</symbol>
+        <lines>2-7</lines>
+        <reason>Existing daily-batch cron. Need to add poll-threshold cron with schedule "*/5 * * * *" (every 5 minutes).</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package>next</package>
+        <version>^15.2.3</version>
+        <usage>App Router, API Routes</usage>
+      </node>
+      <package>@trpc/server</package>
+      <version>^11.0.0</version>
+      <usage>tRPC alertRouter implementation</usage>
+      </package>
+      <package>prisma</package>
+      <version>^6.5.0</version>
+      <usage>Database ORM for CostAlert model</usage>
+      </package>
+      <package>resend</package>
+      <version>^6.4.0</version>
+      <usage>Email alert notifications</usage>
+      </package>
+      <package>react-email</package>
+      <version>^4.3.2</version>
+      <usage>React Email templates for cost alerts</usage>
+      </package>
+      <package>pino</package>
+      <version>^10.1.0</version>
+      <usage>Structured logging for Cron jobs</usage>
+      </package>
+      <package>date-fns</package>
+      <version>^4.1.0</version>
+      <usage>Date manipulation for daily/weekly cost aggregation</usage>
+      </package>
+      <package>zod</package>
+      <version>^3.24.2</version>
+      <usage>Input validation for alertRouter schemas</usage>
+      </package>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>CRITICAL: CostAlert model may need last_alert_sent_at column for throttling (1시간당 최대 1회). Consider adding AlertLog table for audit trail (Story 1.5 AC5 prep).</constraint>
+    <constraint>Design System: Use Premium Indigo theme from src/styles/globals.css. Use semantic colors: --color-warning, --color-success, text-warning for alert UI. Avoid Tailwind raw colors (gray-900, blue-50).</constraint>
+    <constraint>tRPC Pattern: Follow existing costRouter pattern - protectedProcedure, team access verification via TeamMember table, TRPCError with descriptive Korean messages.</constraint>
+    <constraint>Cron Job Security: MUST verify CRON_SECRET using constantTimeCompare (timing-safe comparison). Store CRON_SECRET in Vercel environment variables.</constraint>
+    <constraint>Idempotency: NOT required for poll-threshold (different from daily-batch). Threshold monitoring is real-time, runs every 5 minutes by design.</constraint>
+    <constraint>Alert Throttling: Track last_alert_sent_at per project. Only send alert if &gt;1 hour since last alert for same project.</constraint>
+    <constraint>Parallel Notification: Use Promise.all([sendSlack(), sendEmail()]) to minimize latency and meet NFR002 (&lt;5분).</constraint>
+    <constraint>NFR002 Compliance: Total Cron execution time (threshold check + alert send) must complete &lt;5 minutes. Optimize database queries with indexes on cost_data(team_id, date) and cost_data(project_id, date).</constraint>
+    <constraint>Error Handling: Slack/Resend API failures should be logged to Sentry but NOT block Cron job completion. Retry 3 times with exponential backoff (1s, 2s, 4s) using retryWithBackoff pattern.</constraint>
+    <constraint>Slack Webhook: Use environment variable SLACK_WEBHOOK_URL. Blocks API format with type: "section" and type: "actions" for "상세 보기" button.</constraint>
+    <constraint>React Email: Create template at src/lib/services/email/templates/CostAlertEmail.tsx. Use @react-email/components. Props: projectName, currentCost, threshold, exceedancePercent, dashboardUrl.</constraint>
+    <constraint>File Structure: src/lib/services/slack/webhook.ts (NEW), src/lib/services/monitoring/threshold-monitor.ts (NEW), src/app/api/cron/poll-threshold/route.ts (NEW).</constraint>
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>alertRouter.setThreshold</name>
+      <kind>tRPC Mutation</kind>
+      <signature>
+setThreshold: protectedProcedure
+  .input(z.object({
+    projectId: z.string(),
+    type: z.enum(["daily", "weekly"]),
+    value: z.number().positive()
+  }))
+  .mutation(async ({ input, ctx }) =&gt; {
+    // Create or update CostAlert
+  })
+      </signature>
+      <path>src/server/api/routers/alert.ts</path>
+    </interface>
+    <interface>
+      <name>alertRouter.getAlerts</name>
+      <kind>tRPC Query</kind>
+      <signature>
+getAlerts: protectedProcedure
+  .input(z.object({ projectId: z.string() }))
+  .query(async ({ input, ctx }) =&gt; {
+    // Get active alerts for project
+  })
+      </signature>
+      <path>src/server/api/routers/alert.ts</path>
+    </interface>
+    <interface>
+      <name>checkThresholds</name>
+      <kind>Service Function</kind>
+      <signature>
+async function checkThresholds(): Promise&lt;AlertEvent[]&gt; {
+  // Query all active CostAlert records
+  // For each alert: aggregate daily/weekly cost from cost_data
+  // Compare with threshold_value
+  // Return array of exceeded alerts
+}
+      </signature>
+      <path>src/lib/services/monitoring/threshold-monitor.ts</path>
+    </interface>
+    <interface>
+      <name>sendCostAlert</name>
+      <kind>Service Function</kind>
+      <signature>
+async function sendCostAlert(params: {
+  projectName: string;
+  currentCost: number;
+  threshold: number;
+  exceedancePercent: number;
+  dashboardUrl: string;
+}): Promise&lt;void&gt; {
+  // Send Slack webhook POST
+  // Retry 3 times with exponential backoff
+}
+      </signature>
+      <path>src/lib/services/slack/webhook.ts</path>
+    </interface>
+    <interface>
+      <name>sendCostAlertEmail</name>
+      <kind>Service Function</kind>
+      <signature>
+async function sendCostAlertEmail(params: {
+  to: string;
+  projectName: string;
+  currentCost: number;
+  threshold: number;
+  exceedancePercent: number;
+  dashboardUrl: string;
+}): Promise&lt;void&gt; {
+  // Render React Email template
+  // Send via Resend API
+  // Retry 3 times with exponential backoff
+}
+      </signature>
+      <path>src/lib/services/email/resend-client.ts</path>
+    </interface>
+    <interface>
+      <name>CostAlert Prisma Model</name>
+      <kind>Database Model</kind>
+      <signature>
+model CostAlert {
+  id              String   @id @default(cuid())
+  project_id      String
+  threshold_type  String   // "daily" | "weekly"
+  threshold_value Decimal  @db.Decimal(10,2)
+  is_active       Boolean  @default(true)
+  last_alert_sent_at DateTime? // For throttling
+  created_at      DateTime @default(now())
+
+  @@map("cost_alerts")
+}
+      </signature>
+      <path>prisma/schema.prisma</path>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+Vitest for unit tests (src/lib/services/**/__tests__/*.test.ts). MSW (Mock Service Worker) for mocking Slack/Resend APIs in integration tests. Playwright for E2E tests (__tests__/e2e/). Coverage target: 80% lines/functions/branches/statements.
+    </standards>
+    <locations>
+- Unit tests: src/lib/services/monitoring/__tests__/threshold-monitor.test.ts
+- Unit tests: src/lib/services/slack/__tests__/webhook.test.ts
+- Unit tests: src/lib/services/email/__tests__/resend-client.test.ts
+- Integration tests: src/server/api/routers/__tests__/alert.test.ts
+- E2E tests: __tests__/e2e/cost-threshold-alert.spec.ts
+    </locations>
+    <ideas>
+      <idea ac="1">
+Test setThreshold tRPC mutation: Create CostAlert record, verify threshold_type and threshold_value persisted correctly.
+      </idea>
+      <idea ac="2">
+Test checkThresholds function: Mock cost_data with costs exceeding daily/weekly thresholds, verify correct AlertEvent[] returned.
+      </idea>
+      <idea ac="3">
+Test sendCostAlert (Slack): Mock Slack webhook API with MSW, verify POST payload format (Blocks API), retry logic on 5xx errors. Measure alert send time (&lt;5초).
+      </idea>
+      <idea ac="3">
+Test sendCostAlertEmail (Resend): Mock Resend API with MSW, verify email template rendering, retry logic, error handling (Sentry log).
+      </idea>
+      <idea ac="3">
+Test NFR002 (alert latency &lt;5분): E2E test - set threshold, trigger cost data update, verify Cron runs within 5 minutes, alert received.
+      </idea>
+      <idea ac="4">
+Test alert message content: Verify Slack/Email messages include projectName, currentCost, threshold, exceedancePercent (all fields).
+      </idea>
+      <idea ac="5">
+Test deep link: Verify Slack "상세 보기" button URL links to correct dashboard project detail page.
+      </idea>
+      <idea ac="all">
+Test alert throttling: Send multiple threshold breaches within 1 hour, verify only 1 alert sent. After 1 hour, verify new alert sent.
+      </idea>
+      <idea ac="2">
+Test Cron Job security: Attempt to call /api/cron/poll-threshold without CRON_SECRET, verify 401 Unauthorized response.
+      </idea>
+      <idea ac="2">
+Test database query performance: EXPLAIN ANALYZE on cost aggregation queries, verify indexes used, query time &lt;1초 for 100 projects.
+      </idea>
+    </ideas>
+  </tests>
+</story-context>

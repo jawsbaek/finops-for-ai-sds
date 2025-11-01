@@ -29,7 +29,14 @@ export const env = createEnv({
 
 		// Email notifications
 		RESEND_API_KEY: z.string().optional(),
+		RESEND_FROM_EMAIL: z.string().email().optional(),
 		ADMIN_EMAIL: z.string().email().optional(),
+
+		// Slack notifications
+		SLACK_WEBHOOK_URL: z.string().url().optional(),
+
+		// Application URLs
+		NEXTAUTH_URL: z.string().url().optional(),
 	},
 
 	/**
@@ -57,7 +64,10 @@ export const env = createEnv({
 		AWS_KMS_KEY_ID: process.env.AWS_KMS_KEY_ID,
 		CRON_SECRET: process.env.CRON_SECRET,
 		RESEND_API_KEY: process.env.RESEND_API_KEY,
+		RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL,
 		ADMIN_EMAIL: process.env.ADMIN_EMAIL,
+		SLACK_WEBHOOK_URL: process.env.SLACK_WEBHOOK_URL,
+		NEXTAUTH_URL: process.env.NEXTAUTH_URL,
 	},
 	/**
 	 * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially
