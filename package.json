@@ -13,7 +13,7 @@
 		"db:push": "prisma db push",
 		"db:studio": "prisma studio",
 		"dev": "next dev --turbo",
-		"postinstall": "prisma generate",
+		"postinstall": "prisma generate && lefthook install",
 		"preview": "next build && next start",
 		"start": "next start",
 		"typecheck": "tsc --noEmit"
@@ -42,6 +42,7 @@
 		"@types/node": "^20.14.10",
 		"@types/react": "^19.0.0",
 		"@types/react-dom": "^19.0.0",
+		"lefthook": "^2.0.2",
 		"postcss": "^8.5.3",
 		"prisma": "^6.5.0",
 		"tailwindcss": "^4.0.15",

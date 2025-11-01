@@ -1,0 +1,33 @@
+# Lefthook configuration for FinOps for AI
+# https://github.com/evilmartians/lefthook
+
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      glob: "*.{js,ts,jsx,tsx}"
+      run: bun run lint --fix
+      stage_fixed: true
+
+    format-prisma:
+      glob: "prisma/schema.prisma"
+      run: bunx prisma format
+      stage_fixed: true
+
+pre-push:
+  parallel: false
+  commands:
+    type-check:
+      run: |
+        echo "🔍 Running type check..."
+        bun run build
+      fail_text: "❌ Type check failed. Please fix TypeScript errors before pushing."
+
+    test:
+      run: |
+        if bun run -h 2>/dev/null | grep -q "test"; then
+          echo "🧪 Running tests..."
+          bun test
+        else
+          echo "⏭️  No test script found, skipping tests"
+        fi
