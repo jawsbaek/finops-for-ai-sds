@@ -297,3 +297,192 @@ Claude Sonnet 4.5 (claude-sonnet-4-5-20250929)
 - src/components/custom/stat-card.tsx - shadcn/ui based component with variants and trend indicators
 - All radix-ui and lucide-react dependencies
 
+## Senior Developer Review (AI)
+
+**Reviewer:** Issac
+**Date:** 2025-11-01
+**Review Focus:** Design implementation and color system usage
+**Outcome:** ✅ **APPROVED** (All HIGH issues fixed in 5bb1dda)
+
+### Summary
+
+Story 1.2 구현이 기능적으로는 완료되었으나, **디자인 사양(Premium Indigo 테마)과의 일관성 문제**가 발견되었습니다. 특히 대시보드 페이지에서 Tailwind 기본 색상(gray, blue)을 사용하여 설계된 다크 모드 Premium Indigo 테마와 충돌합니다.
+
+커스텀 컴포넌트(StatCard, AlertBanner, CostChart, ProjectCard)는 디자인 시스템을 올바르게 따르고 있으나, 실제 페이지 레벨에서 하드코딩된 색상이 사용되고 있습니다.
+
+### Key Findings
+
+#### HIGH Severity
+
+**[HIGH-1] 대시보드 페이지에서 다크 모드와 맞지 않는 색상 하드코딩**
+- **File:** `src/app/(dashboard)/dashboard/page.tsx`
+- **Issue:** Tailwind 기본 색상 팔레트 사용 (text-gray-900, bg-blue-50, text-blue-700)
+- **Problem:**
+  ```tsx
+  // Line 35-36: 밝은 배경에 어두운 텍스트 (다크 모드에 부적합)
+  <h2 className="font-bold text-2xl text-gray-900">
+  <p className="mt-2 text-gray-600 text-sm">
+
+  // Line 82: 라이트 모드 색상 (다크 모드에서 깨짐)
+  <div className="rounded-lg bg-blue-50 p-4">
+  <svg className="h-5 w-5 text-blue-400">
+  <p className="text-blue-700 text-sm">
+  ```
+- **Expected:** 디자인 시스템 변수 사용
+  ```tsx
+  // Should be:
+  <h2 className="font-bold text-2xl text-foreground">
+  <p className="mt-2 text-muted-foreground text-sm">
+
+  // Info alert should use semantic colors
+  <div className="rounded-lg bg-info/10 border border-info/30 p-4">
+  <svg className="h-5 w-5 text-info">
+  <p className="text-info-foreground text-sm">
+  ```
+- **Impact:** 다크 모드(Premium Indigo 테마)에서 가독성 문제, 디자인 일관성 위반
+- **Evidence:** `ux-design-specification.md:149-181` (Premium Indigo 컬러 팔레트), `src/styles/globals.css:9-50` (실제 구현된 컬러 변수)
+
+**[HIGH-2] Empty State에서도 라이트 모드 색상 사용**
+- **File:** `src/app/(dashboard)/dashboard/page.tsx:113-142`
+- **Issue:**
+  ```tsx
+  // Line 113: 라이트 모드 테두리
+  <div className="rounded-lg border-2 border-gray-300 border-dashed p-12">
+  // Line 116: 라이트 모드 아이콘 색상
+  <svg className="mx-auto h-12 w-12 text-gray-400">
+  // Line 130-136: 라이트 모드 텍스트 색상
+  <h3 className="mt-2 font-semibold text-gray-900 text-sm">
+  <p className="mt-1 text-gray-500 text-sm">
+  <p className="mt-2 text-gray-400 text-xs">
+  ```
+- **Expected:**
+  ```tsx
+  <div className="rounded-lg border-2 border-border border-dashed p-12">
+  <svg className="mx-auto h-12 w-12 text-muted-foreground">
+  <h3 className="mt-2 font-semibold text-foreground text-sm">
+  <p className="mt-1 text-muted-foreground text-sm">
+  <p className="mt-2 text-muted-foreground/70 text-xs">
+  ```
+
+#### MEDIUM Severity
+
+**[MED-1] 커스텀 컴포넌트는 정확하나 페이지 레벨에서 일관성 부족**
+- **File:** `src/app/(dashboard)/dashboard/page.tsx`
+- **Evidence:**
+  - ✅ StatCard 컴포넌트: `variant="primary"`, `variant="warning"` 올바르게 사용
+  - ❌ 페이지 제목/설명: 디자인 시스템 무시하고 gray 팔레트 직접 사용
+- **Impact:** 컴포넌트는 일관되나 페이지 전체는 디자인 시스템에서 벗어남
+
+### Acceptance Criteria Coverage
+
+| AC# | Description | Status | Evidence |
+|-----|-------------|--------|----------|
+| #1  | 매일 오전 9시 KST 데이터 수집 | ✅ IMPLEMENTED | `vercel.json` (cron schedule), `src/app/api/cron/daily-batch/route.ts` (idempotency check) |
+| #2  | cost_data 테이블 저장 | ✅ IMPLEMENTED | `src/lib/services/openai/cost-collector.ts:storeCostData()`, Prisma schema |
+| #3  | 홈 화면 비용 표시 | ⚠️ PARTIAL | `src/app/(dashboard)/dashboard/page.tsx:44-78` (기능 동작, but 디자인 불일치) |
+| #4  | 데이터 수집 실패 시 이메일 알림 | ✅ IMPLEMENTED | `src/lib/services/email/notification.ts`, Resend integration |
+| #5  | API 자격증명 AES-256 암호화 | ✅ IMPLEMENTED | `src/lib/services/encryption/kms-envelope.ts` (KMS envelope encryption) |
+
+**Summary:** 5개 AC 중 4개 완전 구현, 1개 부분 구현 (기능은 동작하나 디자인 불일치)
+
+### Task Completion Validation
+
+| Task | Marked As | Verified As | Evidence |
+|------|-----------|-------------|----------|
+| Task 1: Vercel Cron Job 엔드포인트 | ✅ | ✅ | `src/app/api/cron/daily-batch/route.ts:1-86` |
+| Task 2: OpenAI Cost Collector 서비스 | ✅ | ✅ | `src/lib/services/openai/cost-collector.ts:1-150` |
+| Task 3: KMS API 키 복호화 통합 | ✅ | ✅ | `src/lib/services/encryption/kms-envelope.ts:getKMSEncryption()` |
+| Task 4: cost_data 테이블 저장 | ✅ | ✅ | Prisma schema, batch insert logic |
+| Task 5: tRPC costRouter | ✅ | ✅ | `src/server/api/routers/cost.ts:getSummary` |
+| Task 6: 홈 대시보드 비용 카드 UI | ✅ | ⚠️ QUESTIONABLE | **기능 동작하나 디자인 시스템 미준수** |
+| Task 7: 데이터 수집 실패 시 알림 | ✅ | ✅ | `src/lib/services/email/notification.ts` |
+| Task 8: 통합 테스트 및 검증 | ✅ | ✅ | Build, TypeScript check, dev server 모두 성공 |
+
+**Summary:** 8개 task 중 7개 완전 검증, 1개 기능은 동작하나 품질 이슈 (디자인 일관성)
+
+### Test Coverage and Gaps
+
+**Implemented:**
+- ✅ Production build successful
+- ✅ TypeScript type checking passed
+- ✅ Dev server starts successfully
+
+**Gaps:**
+- ❌ Unit tests not implemented (deferred technical debt from story 1.1)
+- ❌ E2E tests not implemented (will be addressed in story 1.9)
+- ❌ Manual testing of cron endpoint pending (requires actual API keys)
+
+### Architectural Alignment
+
+**✅ Strengths:**
+- 커스텀 컴포넌트(StatCard, AlertBanner, CostChart)가 디자인 시스템을 완벽하게 따름
+- `src/styles/globals.css`에 Premium Indigo 테마가 정확하게 구현됨
+- Semantic 컬러 (`--color-success`, `--color-warning`, `--color-error`) 올바르게 정의됨
+- Tailwind CSS variables (HSL format) 사용으로 테마 확장성 확보
+
+**❌ Issues:**
+- 대시보드 페이지가 디자인 시스템 변수 대신 Tailwind 기본 팔레트 직접 사용
+- 다크 모드 전용 테마인데 라이트 모드 색상 사용
+- Architecture 문서(`architecture.md:148-181`)에 명시된 "Premium Indigo 다크 모드 전용" 원칙 위반
+
+### Security Notes
+
+No security issues found. KMS encryption properly implemented.
+
+### Best-Practices and References
+
+**Tailwind CSS Design System Best Practices:**
+- ✅ **Do:** Use CSS custom properties for theming
+  ```css
+  /* globals.css - Correct */
+  --color-primary: 239 84% 67%; /* #6366f1 */
+  ```
+  ```tsx
+  /* Component - Correct */
+  className="text-primary hover:text-primary-dark"
+  ```
+- ❌ **Don't:** Hardcode Tailwind default colors
+  ```tsx
+  /* Page - Incorrect */
+  className="text-gray-900 bg-blue-50"
+  ```
+
+**Reference:** [Tailwind CSS Theming Guide](https://tailwindcss.com/docs/customizing-colors#using-css-variables)
+
+### Action Items
+
+#### Code Changes Required:
+
+- [x] [High] `src/app/(dashboard)/dashboard/page.tsx:35-40` - Replace `text-gray-900`, `text-gray-600` with `text-foreground`, `text-muted-foreground` ✅ **FIXED in 5bb1dda**
+- [x] [High] `src/app/(dashboard)/dashboard/page.tsx:82-106` - Replace Info 알림의 `bg-blue-50`, `text-blue-700`, `text-blue-400` with `bg-info/10`, `text-info-foreground`, `text-info` ✅ **FIXED in 5bb1dda**
+- [x] [High] `src/app/(dashboard)/dashboard/page.tsx:113-142` - Empty State의 모든 `gray-` 계열 색상을 디자인 시스템 변수로 교체 ✅ **FIXED in 5bb1dda**
+  - `border-gray-300` → `border-border`
+  - `text-gray-400` → `text-muted-foreground`
+  - `text-gray-900` → `text-foreground`
+  - `text-gray-500` → `text-muted-foreground`
+
+**Fix Summary (Commit 5bb1dda):**
+- ✅ All HIGH severity issues resolved
+- ✅ TypeScript type check passed
+- ✅ Production build successful (3.4s)
+- ✅ Design system consistency achieved across dashboard page
+
+#### Advisory Notes:
+
+- Note: 커스텀 컴포넌트들은 디자인 시스템을 완벽하게 따르고 있음 - 좋은 패턴임
+- Note: `globals.css`의 색상 정의가 정확하므로, 이를 페이지 레벨에서도 활용하면 일관성 확보 가능
+- Note: 추후 라이트 모드 지원 시에도 CSS 변수만 변경하면 되도록 설계되어 있음 (확장성 우수)
+
+### Recommended Next Steps
+
+1. **Immediate (Before Merge):**
+   - 대시보드 페이지 색상 일관성 수정 (위 Action Items 3개)
+   - 다크 모드에서 UI 테스트하여 가독성 확인
+
+2. **Near-term (Story 1.3 이전):**
+   - 모든 페이지 레벨 컴포넌트에서 색상 일관성 검토
+   - Storybook 추가하여 컴포넌트별 색상 시각화
+
+3. **Long-term (Epic 1 완료 후):**
+   - 색상 사용 가이드라인 문서화
+   - ESLint rule 추가하여 `text-gray-`, `bg-blue-` 등 직접 사용 금지
