@@ -1,6 +1,6 @@
+import bcrypt from "bcrypt";
 import type { DefaultSession, NextAuthConfig } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import bcrypt from "bcrypt";
 import { z } from "zod";
 
 import { db } from "~/server/db";
