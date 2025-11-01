@@ -156,7 +156,7 @@ export default function SignupPage() {
 						<button
 							type="submit"
 							disabled={signupMutation.isPending}
-							className="group relative flex w-full justify-center rounded-md bg-primary px-3 py-2 font-semibold text-sm text-primary-foreground hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+							className="group relative flex w-full justify-center rounded-md bg-primary px-3 py-2 font-semibold text-primary-foreground text-sm hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							{signupMutation.isPending
 								? "Creating account..."

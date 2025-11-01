@@ -15,13 +15,15 @@ export default async function DashboardLayout({
 	return (
 		<div className="min-h-screen bg-background">
 			{/* Header */}
-			<header className="border-b border-border bg-card shadow-sm">
+			<header className="border-border border-b bg-card shadow-sm">
 				<div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-6 sm:px-6 lg:px-8">
 					<h1 className="font-bold text-3xl text-foreground tracking-tight">
 						FinOps for AI
 					</h1>
 					<div className="flex items-center gap-4">
-						<span className="text-foreground text-sm">{session.user?.email}</span>
+						<span className="text-foreground text-sm">
+							{session.user?.email}
+						</span>
 						<form
 							action={async () => {
 								"use server";
@@ -30,7 +32,7 @@ export default async function DashboardLayout({
 						>
 							<button
 								type="submit"
-								className="rounded-md bg-error px-3 py-2 font-semibold text-sm text-error-foreground hover:bg-error/90"
+								className="rounded-md bg-error px-3 py-2 font-semibold text-error-foreground text-sm hover:bg-error/90"
 							>
 								Logout
 							</button>
