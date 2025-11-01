@@ -1,7 +1,11 @@
 import { TRPCError } from "@trpc/server";
 import bcrypt from "bcrypt";
 import { z } from "zod";
-import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import {
+	createTRPCRouter,
+	protectedProcedure,
+	publicProcedure,
+} from "~/server/api/trpc";
 
 const BCRYPT_ROUNDS = 10;
 
@@ -94,4 +98,45 @@ export const authRouter = createTRPCRouter({
 				},
 			};
 		}),
+
+	/**
+	 * Get current user with team memberships
+	 */
+	getMe: protectedProcedure.query(async ({ ctx }) => {
+		const userId = ctx.session.user.id;
+
+		const user = await ctx.db.user.findUnique({
+			where: { id: userId },
+			include: {
+				teamMemberships: {
+					include: {
+						team: {
+							select: {
+								id: true,
+								name: true,
+							},
+						},
+					},
+				},
+			},
+		});
+
+		if (!user) {
+			throw new TRPCError({
+				code: "NOT_FOUND",
+				message: "User not found",
+			});
+		}
+
+		return {
+			id: user.id,
+			email: user.email,
+			name: user.name,
+			teamMemberships: user.teamMemberships.map((tm) => ({
+				teamId: tm.teamId,
+				team: tm.team,
+				role: tm.role,
+			})),
+		};
+	}),
 });

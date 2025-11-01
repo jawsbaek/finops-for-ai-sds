@@ -29,7 +29,11 @@ interface OpenAIUsageResponse {
 	next_page?: string;
 }
 
-interface CollectedCostData {
+/**
+ * Cost data structure for collected costs with context metadata
+ * Novel Pattern 1: Cost-Value Attribution
+ */
+export interface CollectedCostData {
 	teamId: string;
 	apiKeyId: string;
 	provider: string;
@@ -39,6 +43,10 @@ interface CollectedCostData {
 	cost: number; // in dollars
 	date: Date;
 	snapshotId: string; // OpenAI snapshot_id for deduplication
+	// Novel Pattern 1: Context metadata
+	projectId?: string; // Optional project association
+	taskType?: string; // Optional task type (e.g., "chat", "embedding", "fine-tuning")
+	userIntent?: string; // Optional user intent description
 }
 
 /**
@@ -288,6 +296,7 @@ export async function storeCostData(
 		const result = await db.costData.createMany({
 			data: batch.map((record) => ({
 				teamId: record.teamId,
+				projectId: record.projectId ?? null,
 				apiKeyId: record.apiKeyId,
 				provider: record.provider,
 				service: record.service,
@@ -296,6 +305,9 @@ export async function storeCostData(
 				cost: record.cost,
 				date: record.date,
 				snapshotId: record.snapshotId,
+				// Novel Pattern 1: Context metadata
+				taskType: record.taskType ?? null,
+				userIntent: record.userIntent ?? null,
 			})),
 			skipDuplicates: true, // Skip if already exists (now works with unique constraint)
 		});

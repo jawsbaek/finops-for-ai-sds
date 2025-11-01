@@ -51,25 +51,13 @@ export default async function DashboardLayout({
 								href="/dashboard"
 								className="block rounded-md bg-primary/10 px-3 py-2 font-medium text-primary text-sm"
 							>
-								Dashboard
+								대시보드
 							</a>
 							<a
-								href="/dashboard/cost-analysis"
+								href="/projects"
 								className="block rounded-md px-3 py-2 font-medium text-muted-foreground text-sm hover:bg-muted hover:text-foreground"
 							>
-								Cost Analysis
-							</a>
-							<a
-								href="/dashboard/api-keys"
-								className="block rounded-md px-3 py-2 font-medium text-muted-foreground text-sm hover:bg-muted hover:text-foreground"
-							>
-								API Keys
-							</a>
-							<a
-								href="/dashboard/settings"
-								className="block rounded-md px-3 py-2 font-medium text-muted-foreground text-sm hover:bg-muted hover:text-foreground"
-							>
-								Settings
+								프로젝트
 							</a>
 						</nav>
 					</aside>
