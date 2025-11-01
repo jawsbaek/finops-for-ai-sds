@@ -30,6 +30,7 @@ describe("Slack Webhook Service", () => {
 
 	afterEach(() => {
 		process.env.SLACK_WEBHOOK_URL = originalEnv;
+		vi.useRealTimers(); // Ensure fake timers are restored
 		vi.restoreAllMocks();
 	});
 
