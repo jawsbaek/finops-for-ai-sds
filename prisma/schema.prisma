@@ -175,3 +175,17 @@ model CronLog {
   @@unique([jobName, date])
   @@map("cron_logs")
 }
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  actionType   String   @map("action_type") // 'api_key_disabled', 'api_key_enabled'
+  resourceType String   @map("resource_type") // 'api_key'
+  resourceId   String   @map("resource_id")
+  metadata     Json? // { reason: string, previous_state: any }
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([resourceType, resourceId])
+  @@map("audit_logs")
+}

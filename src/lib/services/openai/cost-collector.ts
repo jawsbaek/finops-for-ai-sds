@@ -174,6 +174,15 @@ export async function collectDailyCosts(
 				"Processing API key",
 			);
 
+			// Double-check isActive status (defensive programming)
+			if (!apiKeyRecord.isActive) {
+				logger.warn(
+					{ apiKeyId: apiKeyRecord.id },
+					"API key is disabled, skipping cost collection",
+				);
+				continue;
+			}
+
 			// Decrypt API key using KMS
 			const decryptedKey = await retryWithBackoff(
 				() =>

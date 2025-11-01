@@ -188,6 +188,15 @@ export const projectRouter = createTRPCRouter({
 						select: {
 							id: true,
 							name: true,
+							apiKeys: {
+								select: {
+									id: true,
+									provider: true,
+									isActive: true,
+									createdAt: true,
+									encryptedKey: true, // For getting last 4 chars
+								},
+							},
 						},
 					},
 					metrics: true,
@@ -264,6 +273,14 @@ export const projectRouter = createTRPCRouter({
 
 			return {
 				...project,
+				team: {
+					...project.team,
+					apiKeys: project.team.apiKeys.map((key) => ({
+						...key,
+						// Include last 4 chars of encrypted key for display
+						last4: key.encryptedKey.slice(-4),
+					})),
+				},
 				costData: project.costData.map((cost) => ({
 					...cost,
 					cost: cost.cost.toNumber(),

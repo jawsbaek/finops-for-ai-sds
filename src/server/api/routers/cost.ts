@@ -7,8 +7,11 @@
  */
 
 import { TRPCError } from "@trpc/server";
-import { endOfDay, startOfWeek, subDays } from "date-fns";
+import { endOfDay, format, startOfWeek, subDays } from "date-fns";
 import { z } from "zod";
+import { logger } from "~/lib/logger";
+import { logApiKeyDisable } from "~/lib/services/audit/audit-logger";
+import { sendDisableNotification } from "~/lib/services/slack/webhook";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { db } from "~/server/db";
 
@@ -275,5 +278,111 @@ export const costRouter = createTRPCRouter({
 				totalCost: cost._sum.cost?.toNumber() ?? 0,
 				recordCount: cost._count.id,
 			}));
+		}),
+
+	/**
+	 * Disable API Key
+	 *
+	 * Immediately disables an API key to prevent further cost accumulation
+	 * Records action in audit log and sends Slack notification
+	 */
+	disableApiKey: protectedProcedure
+		.input(
+			z.object({
+				apiKeyId: z.string(),
+				reason: z.string().min(1, "Reason is required"),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const userId = ctx.session.user.id;
+
+			// 1. Verify API key exists and get team info
+			const apiKey = await db.apiKey.findUnique({
+				where: { id: input.apiKeyId },
+				include: {
+					team: {
+						select: {
+							id: true,
+							name: true,
+						},
+					},
+				},
+			});
+
+			if (!apiKey) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "API key not found",
+				});
+			}
+
+			// 2. Verify user has access to this team
+			const teamMember = await db.teamMember.findUnique({
+				where: {
+					teamId_userId: {
+						teamId: apiKey.teamId,
+						userId,
+					},
+				},
+			});
+
+			if (!teamMember) {
+				throw new TRPCError({
+					code: "FORBIDDEN",
+					message: "You do not have access to this API key",
+				});
+			}
+
+			// Store previous state for audit
+			const previousState = {
+				isActive: apiKey.isActive,
+			};
+
+			// 3. Disable the API key
+			await db.apiKey.update({
+				where: { id: input.apiKeyId },
+				data: {
+					isActive: false,
+				},
+			});
+
+			// 4. Create audit log
+			await logApiKeyDisable({
+				userId,
+				apiKeyId: input.apiKeyId,
+				reason: input.reason,
+				previousState,
+			});
+
+			// 5. Send Slack notification (async, don't block on errors)
+			const user = await db.user.findUnique({
+				where: { id: userId },
+				select: { name: true, email: true },
+			});
+
+			// Get last 4 characters of encrypted key for reference
+			const last4 = apiKey.encryptedKey.slice(-4);
+
+			sendDisableNotification({
+				teamName: apiKey.team.name,
+				apiKeyLast4: last4,
+				reason: input.reason,
+				userName: user?.name ?? user?.email ?? "Unknown",
+				timestamp: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
+			}).catch((error) => {
+				// Log error but don't fail the request
+				logger.error(
+					{
+						error: error instanceof Error ? error.message : String(error),
+						apiKeyId: input.apiKeyId,
+						teamName: apiKey.team.name,
+					},
+					"Failed to send Slack notification for API key disable",
+				);
+			});
+
+			return {
+				success: true,
+			};
 		}),
 });
