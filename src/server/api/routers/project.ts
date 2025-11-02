@@ -277,7 +277,7 @@ export const projectRouter = createTRPCRouter({
 					...project.team,
 					apiKeys: project.team.apiKeys.map((key) => {
 						// Security: Never send encrypted credentials to client
-						const { encryptedKey, encryptedDataKey, iv, ...safeKey } = key;
+						const { encryptedKey, ...safeKey } = key;
 						return {
 							...safeKey,
 							// Only include last 4 chars for display
