@@ -190,7 +190,7 @@ export default function DashboardPage() {
 										{teamCosts.map((entry, index) => {
 											return (
 												<Cell
-													key={`cell-${index}`}
+													key={`cell-${entry.teamId}`}
 													fill={`hsl(var(--primary) / ${1 - index * 0.15})`}
 												/>
 											);
@@ -202,18 +202,11 @@ export default function DashboardPage() {
 						<div className="mt-4 grid gap-2">
 							{teamCosts.map((team, index) => {
 								return (
-									<div
+									<button
 										key={team.teamId}
-										className="flex cursor-pointer items-center justify-between rounded-lg border p-3 transition-colors hover:bg-accent"
+										type="button"
+										className="flex w-full cursor-pointer items-center justify-between rounded-lg border p-3 text-left transition-colors hover:bg-accent"
 										onClick={() => router.push(`/teams/${team.teamId}`)}
-										onKeyDown={(e) => {
-											if (e.key === "Enter" || e.key === " ") {
-												e.preventDefault();
-												router.push(`/teams/${team.teamId}`);
-											}
-										}}
-										role="button"
-										tabIndex={0}
 									>
 										<div className="flex items-center gap-3">
 											<div
@@ -234,7 +227,7 @@ export default function DashboardPage() {
 												</div>
 											)}
 										</div>
-									</div>
+									</button>
 								);
 							})}
 						</div>

@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Plus, Users } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -188,56 +189,50 @@ export default function TeamsPage() {
 				<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 					{teams.map((team) => {
 						return (
-							<Card
-								key={team.id}
-								className="cursor-pointer transition-all hover:border-primary"
-								onClick={() => router.push(`/teams/${team.id}`)}
-								onKeyDown={(e) => {
-									if (e.key === "Enter" || e.key === " ") {
-										e.preventDefault();
-										router.push(`/teams/${team.id}`);
-									}
-								}}
-								role="button"
-								tabIndex={0}
-							>
-								<CardHeader>
-									<CardTitle className="flex items-center gap-2">
-										<Users className="h-5 w-5 text-primary" />
-										{team.name}
-									</CardTitle>
-								</CardHeader>
-								<CardContent>
-									<div className="space-y-2 text-sm">
-										<div className="flex items-center justify-between">
-											<span className="text-muted-foreground">멤버</span>
-											<span className="font-medium">{team.memberCount}명</span>
-										</div>
-										<div className="flex items-center justify-between">
-											<span className="text-muted-foreground">API 키</span>
-											<span className="font-medium">{team.apiKeyCount}개</span>
-										</div>
-										{team.budget && (
+							<Link key={team.id} href={`/teams/${team.id}`}>
+								<Card className="cursor-pointer transition-all hover:border-primary">
+									<CardHeader>
+										<CardTitle className="flex items-center gap-2">
+											<Users className="h-5 w-5 text-primary" />
+											{team.name}
+										</CardTitle>
+									</CardHeader>
+									<CardContent>
+										<div className="space-y-2 text-sm">
 											<div className="flex items-center justify-between">
-												<span className="text-muted-foreground">월 예산</span>
+												<span className="text-muted-foreground">멤버</span>
 												<span className="font-medium">
-													{formatCurrency(team.budget)}
+													{team.memberCount}명
 												</span>
 											</div>
-										)}
-										<div className="flex items-center justify-between">
-											<span className="text-muted-foreground">역할</span>
-											<span className="font-medium">
-												{team.role === "owner"
-													? "소유자"
-													: team.role === "admin"
-														? "관리자"
-														: "멤버"}
-											</span>
+											<div className="flex items-center justify-between">
+												<span className="text-muted-foreground">API 키</span>
+												<span className="font-medium">
+													{team.apiKeyCount}개
+												</span>
+											</div>
+											{team.budget && (
+												<div className="flex items-center justify-between">
+													<span className="text-muted-foreground">월 예산</span>
+													<span className="font-medium">
+														{formatCurrency(team.budget)}
+													</span>
+												</div>
+											)}
+											<div className="flex items-center justify-between">
+												<span className="text-muted-foreground">역할</span>
+												<span className="font-medium">
+													{team.role === "owner"
+														? "소유자"
+														: team.role === "admin"
+															? "관리자"
+															: "멤버"}
+												</span>
+											</div>
 										</div>
-									</div>
-								</CardContent>
-							</Card>
+									</CardContent>
+								</Card>
+							</Link>
 						);
 					})}
 				</div>
