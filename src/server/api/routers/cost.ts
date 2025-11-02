@@ -84,6 +84,8 @@ export const costRouter = createTRPCRouter({
 					yesterdayCost: 0,
 					thisWeekCost: 0,
 					weeklyChange: 0,
+					thisMonthCost: 0,
+					monthlyChange: 0,
 				};
 			}
 

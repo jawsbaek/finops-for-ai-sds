@@ -141,7 +141,7 @@ model ApiKey {
 model CostData {
   id         String   @id @default(cuid())
   projectId  String   @map("project_id")
-  apiKeyId   String   @map("api_key_id")
+  apiKeyId   String?  @map("api_key_id") // Nullable to preserve historical data after API key deletion
   provider   String // 'openai', 'aws', 'azure'
   service    String // 'gpt-4', 'gpt-3.5-turbo', etc.
   model      String?
@@ -157,7 +157,7 @@ model CostData {
   createdAt DateTime @default(now()) @map("created_at")
 
   project Project @relation(fields: [projectId], references: [id])
-  apiKey  ApiKey  @relation(fields: [apiKeyId], references: [id])
+  apiKey  ApiKey? @relation(fields: [apiKeyId], references: [id])
 
   @@unique([apiKeyId, date, snapshotId])
   @@index([projectId, date])

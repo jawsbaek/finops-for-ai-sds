@@ -56,10 +56,17 @@ BEGIN
     END LOOP;
 END $$;
 
+-- Data Migration: Preserve historical cost data by nulling api_key_id references
+-- Make api_key_id nullable to preserve cost history after API key deletion
+ALTER TABLE "cost_data" ALTER COLUMN "api_key_id" DROP NOT NULL;
+
+-- Set all existing cost_data.api_key_id to NULL (preserve cost records, null out old API key refs)
+-- Historical costs remain attributed to projects via project_id (already backfilled)
+UPDATE "cost_data" SET "api_key_id" = NULL WHERE "api_key_id" IS NOT NULL;
+
 -- Data Migration: Delete all existing API keys (Breaking Change - users must re-register)
 -- This ensures api_keys table is empty before adding NOT NULL project_id column
--- Delete cost_data first to avoid FK constraint violations
-DELETE FROM "cost_data" WHERE api_key_id IN (SELECT id FROM api_keys);
+-- Cost data is preserved with NULL api_key_id
 DELETE FROM "api_keys";
 
 -- AlterTable
