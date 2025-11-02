@@ -40,6 +40,35 @@ export const teamRouter = createTRPCRouter({
 		.mutation(async ({ ctx, input }) => {
 			const userId = ctx.session.user.id;
 
+			// Debug: Verify user exists before creating team
+			logger.info(
+				{
+					userId,
+					sessionEmail: ctx.session.user.email,
+				},
+				"Team create: checking user exists",
+			);
+
+			const userExists = await db.user.findUnique({
+				where: { id: userId },
+				select: { id: true, email: true },
+			});
+
+			if (!userExists) {
+				logger.error(
+					{
+						userId,
+						sessionEmail: ctx.session.user.email,
+					},
+					"User from session does not exist in database",
+				);
+				throw new TRPCError({
+					code: "UNAUTHORIZED",
+					message:
+						"세션이 만료되었거나 사용자 정보가 유효하지 않습니다. 다시 로그인해주세요.",
+				});
+			}
+
 			// Create team and add creator as owner in a transaction
 			const team = await db.$transaction(async (tx) => {
 				const newTeam = await tx.team.create({
