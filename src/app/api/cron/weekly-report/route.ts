@@ -57,30 +57,30 @@ export async function GET(request: Request) {
 			);
 		}
 
-		// Step 2: Idempotency check using cron_logs table
+		// Step 2: Atomic idempotency check - create log entry first
 		const today = format(new Date(), "yyyy-MM-dd");
 		const jobName = "weekly-report";
 
-		const existingLog = await db.cronLog.findUnique({
-			where: {
-				jobName_date: {
+		try {
+			// Try to create log entry atomically
+			// If another instance already created it, this will throw due to unique constraint
+			await db.cronLog.create({
+				data: {
 					jobName,
 					date: today,
 				},
-			},
-		});
-
-		if (existingLog) {
+			});
+		} catch (error) {
+			// Log entry already exists - another instance is running or completed
 			logger.info({
 				jobName,
 				date: today,
-				executedAt: existingLog.executedAt,
-				message: "Weekly report already generated today, skipping",
+				message:
+					"Weekly report already generated or in progress today, skipping",
 			});
 			return NextResponse.json({
 				success: true,
-				message: "Report already generated today",
-				executedAt: existingLog.executedAt,
+				message: "Report already generated or in progress today",
 			});
 		}
 
@@ -139,14 +139,7 @@ export async function GET(request: Request) {
 			}
 		}
 
-		// Step 6: Log successful execution to cron_logs
-		await db.cronLog.create({
-			data: {
-				jobName,
-				date: today,
-			},
-		});
-
+		// Step 6: Execution complete (log already created in Step 2)
 		const duration = Date.now() - startTime;
 
 		logger.info({

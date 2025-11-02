@@ -58,13 +58,17 @@ export function calculateWeekChange(
  * @returns Complete weekly report data ready for email and storage
  */
 export async function generateWeeklyReport(): Promise<WeeklyReportData> {
-	// Calculate date ranges
+	// Calculate date ranges for PREVIOUS week (completed week)
+	// Cron runs Monday morning, so we report on the week that just ended
 	const now = new Date();
-	const weekEnd = endOfWeek(now, { weekStartsOn: 1 }); // Week ends on Sunday
-	const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Week starts on Monday
+	const lastWeek = subWeeks(now, 1);
+	const weekEnd = endOfWeek(lastWeek, { weekStartsOn: 1 }); // Previous Sunday
+	const weekStart = startOfWeek(lastWeek, { weekStartsOn: 1 }); // Previous Monday
 
-	const previousWeekEnd = endOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
-	const previousWeekStart = startOfWeek(subWeeks(now, 1), {
+	// Calculate week before that for comparison
+	const twoWeeksAgo = subWeeks(now, 2);
+	const previousWeekEnd = endOfWeek(twoWeeksAgo, { weekStartsOn: 1 });
+	const previousWeekStart = startOfWeek(twoWeeksAgo, {
 		weekStartsOn: 1,
 	});
 
