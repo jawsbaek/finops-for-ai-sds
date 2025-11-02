@@ -2,7 +2,7 @@
 
 import { StatCard } from "@/components/custom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Clock, DollarSign, TrendingUp, Users } from "lucide-react";
+import { Clock, DollarSign, FolderOpen, TrendingUp, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
 	Bar,
@@ -19,15 +19,40 @@ import { api } from "~/trpc/react";
 export default function DashboardPage() {
 	const router = useRouter();
 
-	// Fetch cost summary data
-	const { data: costSummary, isLoading } = api.cost.getSummary.useQuery({});
+	// Fetch cost summary data with 5-minute cache
+	const { data: costSummary, isLoading } = api.cost.getSummary.useQuery(
+		{},
+		{
+			staleTime: 5 * 60 * 1000, // 5 minutes
+			gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
+		},
+	);
 
-	// Fetch team costs top 5
+	// Fetch team costs top 5 with 5-minute cache
 	const { data: teamCosts, isLoading: isLoadingTeamCosts } =
-		api.cost.getTeamCostsTopN.useQuery({
-			limit: 5,
-			days: 7,
-		});
+		api.cost.getTeamCostsTopN.useQuery(
+			{
+				limit: 5,
+				days: 7,
+			},
+			{
+				staleTime: 5 * 60 * 1000, // 5 minutes
+				gcTime: 10 * 60 * 1000, // 10 minutes
+			},
+		);
+
+	// Fetch project costs top 5 with 5-minute cache
+	const { data: projectCosts, isLoading: isLoadingProjectCosts } =
+		api.cost.getProjectCostsTopN.useQuery(
+			{
+				limit: 5,
+				days: 7,
+			},
+			{
+				staleTime: 5 * 60 * 1000, // 5 minutes
+				gcTime: 10 * 60 * 1000, // 10 minutes
+			},
+		);
 
 	// Format currency
 	const formatCurrency = (amount: number) => {
@@ -91,10 +116,22 @@ export default function DashboardPage() {
 				/>
 
 				<StatCard
-					label="데이터 업데이트 지연"
-					value="8-24시간"
-					icon={<Clock className="h-5 w-5" />}
-					variant="warning"
+					label="이번 달 총 비용"
+					value={formatCurrency(costSummary?.thisMonthCost ?? 0)}
+					change={
+						costSummary?.monthlyChange !== undefined &&
+						costSummary?.monthlyChange !== 0
+							? formatChange(costSummary.monthlyChange)
+							: undefined
+					}
+					trend={
+						costSummary?.monthlyChange !== undefined
+							? getTrend(costSummary.monthlyChange)
+							: "neutral"
+					}
+					icon={<DollarSign className="h-5 w-5" />}
+					variant="primary"
+					loading={isLoading}
 				/>
 			</div>
 
@@ -224,6 +261,127 @@ export default function DashboardPage() {
 											{team.budget && (
 												<div className="text-muted-foreground text-xs">
 													예산: {formatCurrency(team.budget)}
+												</div>
+											)}
+										</div>
+									</button>
+								);
+							})}
+						</div>
+					</CardContent>
+				</Card>
+			)}
+
+			{/* Project Costs Top 5 Chart */}
+			{!isLoadingProjectCosts && projectCosts && projectCosts.length > 0 && (
+				<Card>
+					<CardHeader>
+						<CardTitle className="flex items-center gap-2">
+							<FolderOpen className="h-5 w-5 text-primary" />
+							주요 프로젝트 비용 Top 5 (최근 7일)
+						</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<div className="h-[300px]">
+							<ResponsiveContainer width="100%" height="100%">
+								<BarChart
+									data={projectCosts}
+									onClick={(data: unknown) => {
+										if (
+											typeof data === "object" &&
+											data !== null &&
+											"activePayload" in data &&
+											Array.isArray(data.activePayload) &&
+											data.activePayload[0]?.payload?.projectId
+										) {
+											const projectId = data.activePayload[0].payload
+												.projectId as string;
+											router.push(`/projects/${projectId}`);
+										}
+									}}
+								>
+									<CartesianGrid
+										strokeDasharray="3 3"
+										className="stroke-muted"
+									/>
+									<XAxis
+										dataKey="projectName"
+										className="text-sm"
+										tick={{ fill: "hsl(var(--muted-foreground))" }}
+									/>
+									<YAxis
+										className="text-sm"
+										tick={{ fill: "hsl(var(--muted-foreground))" }}
+										tickFormatter={(value: number) => `$${value.toFixed(2)}`}
+									/>
+									<Tooltip
+										contentStyle={{
+											backgroundColor: "hsl(var(--card))",
+											border: "1px solid hsl(var(--border))",
+											borderRadius: "8px",
+										}}
+										labelStyle={{ color: "hsl(var(--foreground))" }}
+										formatter={(value: number, name: string) => [
+											formatCurrency(value),
+											name === "totalCost" ? "총 비용" : name,
+										]}
+									/>
+									<Bar
+										dataKey="totalCost"
+										fill="hsl(var(--chart-2))"
+										radius={[8, 8, 0, 0]}
+										cursor="pointer"
+									>
+										{projectCosts.map((entry, index) => {
+											return (
+												<Cell
+													key={`cell-${entry.projectId}`}
+													fill={`hsl(var(--chart-2) / ${1 - index * 0.15})`}
+												/>
+											);
+										})}
+									</Bar>
+								</BarChart>
+							</ResponsiveContainer>
+						</div>
+						<div className="mt-4 grid gap-2">
+							{projectCosts.map((project, index) => {
+								return (
+									<button
+										key={project.projectId}
+										type="button"
+										className="flex w-full cursor-pointer items-center justify-between rounded-lg border p-3 text-left transition-colors hover:bg-accent"
+										onClick={() =>
+											router.push(`/projects/${project.projectId}`)
+										}
+									>
+										<div className="flex items-center gap-3">
+											<div
+												className="h-8 w-1 rounded-full"
+												style={{
+													backgroundColor: `hsl(var(--chart-2) / ${1 - index * 0.15})`,
+												}}
+											/>
+											<div>
+												<div className="font-medium">{project.projectName}</div>
+												<div className="text-muted-foreground text-xs">
+													{project.teamName}
+												</div>
+											</div>
+										</div>
+										<div className="text-right">
+											<div className="font-semibold">
+												{formatCurrency(project.totalCost)}
+											</div>
+											{project.weeklyChange !== 0 && (
+												<div
+													className={`text-xs ${
+														project.weeklyChange > 0
+															? "text-destructive"
+															: "text-success"
+													}`}
+												>
+													{formatChange(project.weeklyChange)}
 												</div>
 											)}
 										</div>

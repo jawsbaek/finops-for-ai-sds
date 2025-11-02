@@ -1,0 +1,332 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>epic-1</epicId>
+    <storyId>1.8</storyId>
+    <title>긴급 조치용 기본 웹 대시보드</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-02</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-8-긴급-조치용-기본-웹-대시보드.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>FinOps 관리자</asA>
+    <iWant>비용 현황을 한눈에 파악하고 긴급 조치를 취할 수 있는 대시보드를</iWant>
+    <soThat>알림 받은 후 즉시 상황을 이해하고 대응할 수 있다</soThat>
+    <tasks>
+- Task 1: 홈 대시보드 비용 요약 카드 구현 (AC: #1)
+  - tRPC cost.getSummary 프로시저 생성 (전일/전주/전월 총 비용 집계)
+  - src/app/(dashboard)/page.tsx: 비용 요약 카드 3개 레이아웃
+  - shadcn/ui Card 컴포넌트 사용 (Premium Indigo 테마)
+  - 각 카드에 전기간 대비 증감률 표시 (%, 화살표 아이콘)
+  - 로딩 스켈레톤 UI 추가
+
+- Task 2: 주요 프로젝트 비용 Top 5 차트 구현 (AC: #2)
+  - tRPC cost.getProjectCostsTopN 프로시저 생성 (최근 7일 프로젝트별 비용)
+  - src/components/charts/project-costs-bar-chart.tsx 생성
+  - Recharts BarChart 컴포넌트 사용
+  - 프로젝트명, 총 비용, 전주 대비 증감률 표시
+  - 차트 클릭 시 프로젝트 상세 페이지로 이동
+
+- Task 3: 프로젝트 상세 페이지 비용 추이 그래프 (AC: #3)
+  - src/app/(dashboard)/projects/[projectId]/page.tsx 생성 또는 확장
+  - tRPC cost.getProjectCostTrend 프로시저 (최근 30일 일별 비용)
+  - src/components/charts/cost-trend-line-chart.tsx 생성
+  - Recharts LineChart 컴포넌트 사용
+  - 비용-가치 연결: 프로젝트 메트릭(성공 수, 피드백 점수) 함께 표시
+  - 비용 대비 성과 차트 추가 (Novel Pattern 1)
+
+- Task 4: 프로젝트 상세 페이지 긴급 조치 기능 (AC: #4)
+  - 임계값 설정 섹션 추가 (tRPC alert.setThreshold 연동, Zod validation)
+  - API 키 비활성화 섹션 추가 (tRPC cost.disableApiKey 연동, Type-to-confirm 모달)
+  - 프로젝트 정보 카드 (tRPC project.getById 연동)
+
+- Task 5: 성능 최적화 및 캐싱 (AC: #5)
+  - React Query 캐싱 설정 (staleTime: 5분)
+  - Next.js Server-Side Rendering (SSR) 활성화
+  - Prisma 쿼리 최적화 (인덱스 활용: cost_data(team_id, date))
+  - 대시보드 Lighthouse 테스트 (LCP <2.5초, FID <100ms, CLS <0.1)
+  - Vercel Analytics 통합하여 실제 P95 로딩 시간 측정
+
+- Task 6: 반응형 디자인 및 모바일 지원
+  - Tailwind CSS 반응형 브레이크포인트 적용
+  - 모바일 화면에서 차트 가로 스크롤 지원
+  - 터치 인터랙션 최적화
+  - 태블릿/모바일에서 긴급 조치 버튼 접근성 확보
+
+- Task 7: 통합 테스트 및 검증
+  - E2E 테스트: 로그인 → 홈 대시보드 로딩 → 프로젝트 상세 → 임계값 설정
+  - E2E 테스트: 프로젝트 상세 → API 키 비활성화 → audit log 확인
+  - 성능 테스트: 대시보드 로딩 시간 <3초 검증 (Lighthouse CI)
+  - TypeScript type checking passed
+  - Production build successful</tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. 홈 화면에 "전일/전주/전월 총 비용" 카드가 표시되어야 한다 (FR001, FR009)
+2. 홈 화면에 "주요 프로젝트 비용 Top 5" 차트가 표시되어야 한다
+3. 프로젝트 상세 페이지에 비용 추이 그래프(최근 30일)가 표시되어야 한다 (FR003)
+4. 프로젝트 상세 페이지에서 임계값 설정 및 API 키 비활성화가 가능해야 한다 (FR004, FR005)
+5. 대시보드 초기 로딩 시간은 3초 이내여야 한다 (NFR001, P95 기준)</acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>Functional Requirements - FR001, FR003, FR004, FR005</section>
+        <snippet>FR001: 일일 배치로 OpenAI 사용량 수집 및 전일 총 비용 표시. FR003: 프로젝트/실험별 총 비용 및 비용 대비 성과 함께 표시. FR004: 프로젝트별 일일/주간 비용 임계값 설정 및 즉시 알림. FR005: 임계값 초과 시 API 키 자동 비활성화 가능.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>Non-Functional Requirements - NFR001</section>
+        <snippet>NFR001: 대시보드 초기 로딩 시간 3초 이내 (P95 기준). NFR002: 비용 임계값 초과 감지 후 5분 이내 알림 발송.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>User Journeys - 비용 급증 감지 및 즉시 대응</section>
+        <snippet>FinOps 관리자가 Slack 알림 수신 → 웹 대시보드에서 비용 추이 확인 → 대시보드에서 API 키 즉시 비활성화. 목표: AI 비용 폭주를 조기 발견하고 즉시 중단하여 예산 손실 방지.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>Project Structure - Dashboard UI</section>
+        <snippet>홈 대시보드: src/app/(dashboard)/page.tsx. 프로젝트 상세: src/app/(dashboard)/projects/[projectId]/page.tsx. Charts 컴포넌트: src/components/charts/. Dashboard 컴포넌트: src/components/dashboard/.</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-1.md</path>
+        <title>Technical Specification - Epic 1</title>
+        <section>APIs and Interfaces - cost.ts Router</section>
+        <snippet>costRouter에 getSummary, getProjectCostsTopN, getProjectCostTrend 프로시저 정의. Zod input validation, protectedProcedure 패턴 사용.</snippet>
+      </doc>
+      <doc>
+        <path>docs/ux-design-specification.md</path>
+        <title>UX Design Specification</title>
+        <section>Dashboard Design - Cost Summary Cards, Charts</section>
+        <snippet>Premium Indigo 테마, shadcn/ui Card 컴포넌트, Recharts BarChart/LineChart 사용. 반응형 디자인 (Tailwind grid-cols-1 md:grid-cols-3).</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/app/(dashboard)/dashboard/page.tsx</path>
+        <kind>component</kind>
+        <symbol>DashboardPage</symbol>
+        <lines>0-80</lines>
+        <reason>홈 대시보드 페이지 - 비용 요약 카드와 팀별 비용 차트 이미 구현됨. Story 1.8에서 프로젝트 비용 차트 추가 필요.</reason>
+      </artifact>
+      <artifact>
+        <path>src/server/api/routers/cost.ts</path>
+        <kind>router</kind>
+        <symbol>costRouter</symbol>
+        <lines>0-358</lines>
+        <reason>비용 tRPC router. getSummary, getRecentCosts, getCostByTeam, getTeamCostsTopN 이미 구현됨. getProjectCostsTopN, getProjectCostTrend, disableApiKey 프로시저 추가 필요.</reason>
+      </artifact>
+      <artifact>
+        <path>src/server/api/routers/alert.ts</path>
+        <kind>router</kind>
+        <symbol>alertRouter</symbol>
+        <lines>0-60</lines>
+        <reason>알림 tRPC router. setThreshold 이미 구현됨 (Story 1.4). 프로젝트 상세 페이지에서 재사용.</reason>
+      </artifact>
+      <artifact>
+        <path>src/server/api/routers/project.ts</path>
+        <kind>router</kind>
+        <symbol>projectRouter</symbol>
+        <lines>0-60</lines>
+        <reason>프로젝트 tRPC router. getById 이미 구현됨 (Story 1.3). 프로젝트 상세 페이지에서 재사용.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/custom/cost-chart.tsx</path>
+        <kind>component</kind>
+        <symbol>CostChart</symbol>
+        <lines>1-</lines>
+        <reason>Recharts 래퍼 컴포넌트 참조 - 차트 구현 패턴 재사용 가능.</reason>
+      </artifact>
+      <artifact>
+        <path>src/app/(dashboard)/projects/[id]/page.tsx</path>
+        <kind>component</kind>
+        <symbol>ProjectDetailPage</symbol>
+        <lines>1-</lines>
+        <reason>프로젝트 상세 페이지 이미 존재 (Story 1.3). Story 1.8에서 비용 추이 그래프, 임계값 설정, API 키 비활성화 기능 추가.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package>recharts</package>
+        <version>^3.3.0</version>
+        <purpose>SVG 기반 차트 라이브러리 - BarChart, LineChart 컴포넌트 사용</purpose>
+      </node>
+      <node>
+        <package>@radix-ui/react-dialog</package>
+        <version>^1.1.15</version>
+        <purpose>Type-to-confirm 모달 (API 키 비활성화)</purpose>
+      </node>
+      <node>
+        <package>react-hook-form</package>
+        <version>^7.66.0</version>
+        <purpose>임계값 설정 폼 validation</purpose>
+      </node>
+      <node>
+        <package>zod</package>
+        <version>^3.24.2</version>
+        <purpose>tRPC input validation 및 폼 스키마</purpose>
+      </node>
+      <node>
+        <package>@tanstack/react-query</package>
+        <version>^5.69.0</version>
+        <purpose>tRPC useQuery 캐싱 (staleTime: 5분)</purpose>
+      </node>
+      <node>
+        <package>next</package>
+        <version>^15.2.3</version>
+        <purpose>Next.js App Router, SSR for dashboard performance</purpose>
+      </node>
+      <node>
+        <package>lucide-react</package>
+        <version>^0.552.0</version>
+        <purpose>아이콘 (DollarSign, TrendingUp, Clock 등)</purpose>
+      </node>
+      <node>
+        <package>date-fns</package>
+        <version>^4.1.0</version>
+        <purpose>날짜 계산 (subDays, startOfWeek 등)</purpose>
+      </node>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>
+      <category>Architecture Pattern</category>
+      <description>T3 Stack: Next.js App Router, tRPC, Prisma, NextAuth. 모든 API는 tRPC protectedProcedure로 구현.</description>
+    </constraint>
+    <constraint>
+      <category>Design System</category>
+      <description>shadcn/ui (Radix UI primitives), Premium Indigo dark mode theme (globals.css), Tailwind CSS 4.x responsive breakpoints (sm, md, lg, xl).</description>
+    </constraint>
+    <constraint>
+      <category>Performance</category>
+      <description>NFR001: Dashboard initial loading <3s (P95). React Query caching (staleTime: 5min), Next.js SSR, Prisma index on cost_data(team_id, date).</description>
+    </constraint>
+    <constraint>
+      <category>Testing</category>
+      <description>Vitest for unit/integration tests, Playwright for E2E, Lighthouse CI for performance (LCP <2.5s, FID <100ms, CLS <0.1).</description>
+    </constraint>
+    <constraint>
+      <category>File Structure</category>
+      <description>Dashboard UI: src/app/(dashboard)/page.tsx. Charts: src/components/charts/. Dashboard components: src/components/dashboard/. tRPC routers: src/server/api/routers/.</description>
+    </constraint>
+    <constraint>
+      <category>Novel Pattern</category>
+      <description>비용-가치 연결 (Cost-Value Attribution): 프로젝트 비용과 성과 메트릭(successCount, feedbackScore) 함께 표시. Cost efficiency = success_count / total_cost.</description>
+    </constraint>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>cost.getSummary</name>
+      <kind>tRPC Query</kind>
+      <signature>input: { teamId?: string } → output: { yesterdayCost: number, thisWeekCost: number, weeklyChange: number }</signature>
+      <path>src/server/api/routers/cost.ts:23-132</path>
+    </interface>
+    <interface>
+      <name>cost.getTeamCostsTopN</name>
+      <kind>tRPC Query</kind>
+      <signature>input: { limit: number, days: number } → output: { teamId: string, teamName: string, totalCost: number, weeklyChange: number }[]</signature>
+      <path>src/server/api/routers/cost.ts:286-358</path>
+    </interface>
+    <interface>
+      <name>cost.getProjectCostsTopN</name>
+      <kind>tRPC Query (TO BE IMPLEMENTED)</kind>
+      <signature>input: { teamId?: string, limit: number, days: number } → output: { projectId: string, projectName: string, totalCost: number, weeklyChange: number }[]</signature>
+      <path>src/server/api/routers/cost.ts (NEW PROCEDURE)</path>
+    </interface>
+    <interface>
+      <name>cost.getProjectCostTrend</name>
+      <kind>tRPC Query (TO BE IMPLEMENTED)</kind>
+      <signature>input: { projectId: string, days: number } → output: { date: Date, cost: number, successCount: number, feedbackScore: number }[]</signature>
+      <path>src/server/api/routers/cost.ts (NEW PROCEDURE)</path>
+    </interface>
+    <interface>
+      <name>cost.disableApiKey</name>
+      <kind>tRPC Mutation (TO BE IMPLEMENTED)</kind>
+      <signature>input: { apiKeyId: string, reason: string } → output: { success: boolean, message: string }</signature>
+      <path>src/server/api/routers/cost.ts (NEW PROCEDURE)</path>
+    </interface>
+    <interface>
+      <name>alert.setThreshold</name>
+      <kind>tRPC Mutation</kind>
+      <signature>input: { projectId: string, type: "daily" | "weekly", value: number } → output: { id: string, projectId: string, type: string, value: number }</signature>
+      <path>src/server/api/routers/alert.ts:24-60</path>
+    </interface>
+    <interface>
+      <name>project.getById</name>
+      <kind>tRPC Query</kind>
+      <signature>input: { id: string } → output: { id, name, description, teamId, metrics: { successCount, feedbackScore } }</signature>
+      <path>src/server/api/routers/project.ts (REUSE FROM STORY 1.3)</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+Testing Framework: Vitest for unit/integration tests, Playwright for E2E tests, Lighthouse CI for performance validation.
+
+Unit Tests (Vitest):
+- tRPC routers: Test all new procedures (getProjectCostsTopN, getProjectCostTrend, disableApiKey) with mocked Prisma
+- Chart components: Render tests for project-costs-bar-chart.tsx, cost-trend-line-chart.tsx
+- Dashboard components: cost-summary-cards.tsx, threshold-setting-form.tsx, api-key-disable-modal.tsx
+
+Integration Tests (Vitest + MSW):
+- Dashboard page: Verify cost summary cards and project Top 5 chart render correctly
+- Project detail page: Test cost trend graph, threshold setting, API key disable flow
+
+E2E Tests (Playwright):
+- Login → Home dashboard → Project chart click → Project detail navigation
+- Project detail → Set threshold → Success message
+- Project detail → Disable API key → Type-to-confirm modal → Audit log verification
+
+Performance Tests (Lighthouse CI):
+- LCP (Largest Contentful Paint) <2.5s
+- FID (First Input Delay) <100ms
+- CLS (Cumulative Layout Shift) <0.1
+- P95 loading time <3s (measured via Vercel Analytics)
+    </standards>
+    <locations>
+__tests__/unit/routers/cost.test.ts - tRPC cost router tests
+__tests__/unit/components/charts/ - Chart component tests
+__tests__/unit/components/dashboard/ - Dashboard component tests
+__tests__/integration/dashboard.test.tsx - Dashboard page integration tests
+__tests__/integration/project-detail.test.tsx - Project detail page integration tests
+__tests__/e2e/dashboard-navigation.spec.ts - E2E navigation tests
+__tests__/e2e/threshold-setting.spec.ts - E2E threshold setting tests
+__tests__/e2e/api-key-disable.spec.ts - E2E API key disable tests
+    </locations>
+    <ideas>
+AC #1 (비용 요약 카드):
+- Unit: cost.getSummary returns correct yesterdayCost, thisWeekCost, weeklyChange
+- Integration: Dashboard renders 3 cost summary cards with correct formatting
+- E2E: Dashboard loads and displays cost summary cards within 3s
+
+AC #2 (프로젝트 비용 Top 5 차트):
+- Unit: cost.getProjectCostsTopN returns top 5 projects ordered by cost
+- Integration: BarChart renders with correct data and click handler
+- E2E: Click project chart → navigates to project detail page
+
+AC #3 (프로젝트 비용 추이 그래프):
+- Unit: cost.getProjectCostTrend returns 30-day cost trend with metrics
+- Integration: LineChart renders cost and value metrics together
+- E2E: Project detail page displays cost trend graph correctly
+
+AC #4 (임계값 설정 및 API 키 비활성화):
+- Unit: alert.setThreshold updates threshold correctly
+- Unit: cost.disableApiKey disables key and creates audit log
+- Integration: Threshold form validates input and submits correctly
+- Integration: Type-to-confirm modal requires exact text match
+- E2E: Set threshold → success toast, API key disable → confirm modal → audit log created
+
+AC #5 (성능 최적화):
+- Performance: Lighthouse score >90, LCP <2.5s, FID <100ms, CLS <0.1
+- Performance: React Query cache hit rate >80% after initial load
+- Performance: Prisma query optimization - use indexes on cost_data(team_id, date)
+    </ideas>
+  </tests>
+</story-context>
