@@ -99,10 +99,15 @@ export async function generateWeeklyReport(): Promise<WeeklyReportData> {
 		weekEnd,
 	);
 
+	// Get project IDs from summaries to ensure consistent filtering
+	const projectIds = projectSummaries.map((p) => p.projectId);
+
 	// Calculate total cost for previous week (week before that)
+	// Filter to same project set to avoid counting unassigned costs inconsistently
 	const previousWeekCosts = await db.costData.groupBy({
 		by: ["projectId"],
 		where: {
+			projectId: { in: projectIds },
 			date: {
 				gte: previousWeekStart,
 				lte: previousWeekEnd,
