@@ -189,3 +189,14 @@ model AuditLog {
   @@index([resourceType, resourceId])
   @@map("audit_logs")
 }
+
+model WeeklyReport {
+  id          String   @id @default(cuid())
+  weekStart   DateTime @map("week_start") @db.Date
+  weekEnd     DateTime @map("week_end") @db.Date
+  data        Json // { totalCost, weekChange, projects: [...], top3: [...], bottom3: [...] }
+  generatedAt DateTime @default(now()) @map("generated_at")
+
+  @@index([weekStart])
+  @@map("weekly_reports")
+}
