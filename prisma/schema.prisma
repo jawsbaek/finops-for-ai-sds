@@ -24,8 +24,9 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  sessions        Session[]
-  teamMemberships TeamMember[]
+  sessions           Session[]
+  teamMemberships    TeamMember[]
+  projectMemberships ProjectMember[]
 
   @@index([email])
   @@map("users")
@@ -53,8 +54,6 @@ model Team {
 
   members  TeamMember[]
   projects Project[]
-  apiKeys  ApiKey[]
-  costData CostData[]
 
   @@index([ownerId])
   @@map("teams")
@@ -84,12 +83,28 @@ model Project {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   team       Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  members    ProjectMember[]
+  apiKeys    ApiKey[]
   costData   CostData[]
   metrics    ProjectMetrics?
   costAlerts CostAlert[]
 
   @@index([teamId])
   @@map("projects")
+}
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
 }
 
 // Novel Pattern 1: Value Metrics Collector
@@ -106,7 +121,7 @@ model ProjectMetrics {
 
 model ApiKey {
   id               String   @id @default(cuid())
-  teamId           String   @map("team_id")
+  projectId        String   @map("project_id")
   provider         String // 'openai', 'aws', 'azure', etc.
   encryptedKey     String   @map("encrypted_key") @db.Text
   encryptedDataKey String   @map("encrypted_data_key") @db.Text
@@ -115,19 +130,18 @@ model ApiKey {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  team     Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  project  Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   costData CostData[]
 
-  @@index([teamId])
+  @@index([projectId])
   @@index([provider])
   @@map("api_keys")
 }
 
 model CostData {
   id         String   @id @default(cuid())
-  teamId     String   @map("team_id")
-  projectId  String?  @map("project_id")
-  apiKeyId   String   @map("api_key_id")
+  projectId  String   @map("project_id")
+  apiKeyId   String?  @map("api_key_id") // Nullable to preserve historical data after API key deletion
   provider   String // 'openai', 'aws', 'azure'
   service    String // 'gpt-4', 'gpt-3.5-turbo', etc.
   model      String?
@@ -142,12 +156,10 @@ model CostData {
 
   createdAt DateTime @default(now()) @map("created_at")
 
-  team    Team     @relation(fields: [teamId], references: [id])
-  project Project? @relation(fields: [projectId], references: [id])
-  apiKey  ApiKey   @relation(fields: [apiKeyId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+  apiKey  ApiKey? @relation(fields: [apiKeyId], references: [id])
 
   @@unique([apiKeyId, date, snapshotId])
-  @@index([teamId, date])
   @@index([projectId, date])
   @@map("cost_data")
 }

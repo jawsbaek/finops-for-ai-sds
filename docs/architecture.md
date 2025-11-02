@@ -13,7 +13,7 @@ finops-for-ai 프로젝트는 **T3 Stack (Next.js 16 + tRPC + Prisma + NextAuth)
 
 핵심 차별화 요소는 두 가지 Novel Patterns입니다:
 1. **비용-가치 연결**: 단순 비용 추적이 아닌, 프로젝트 성과와 함께 분석하여 "비용 대비 가치" 계산
-2. **아키텍처 기반 귀속**: 태그 대신 API 키 격리로 팀별 비용 자동 귀속
+2. **프로젝트 기반 API 키 격리**: 태그 대신 프로젝트별 API 키 격리로 비용 자동 귀속 및 팀 레벨 집계
 
 이 아키텍처는 15개 스토리(2개 Epic)를 2-4시간 단위로 구현 가능하도록 AI 에이전트 일관성을 보장합니다.
 
@@ -155,7 +155,7 @@ finops-for-ai/
 | 1.4 | `src/app/api/cron/poll-threshold/`, `src/lib/services/email/`, `src/lib/services/slack/` | Vercel Cron, Resend, Slack |
 | 1.5 | `src/server/api/routers/cost.ts`, Prisma middleware | tRPC, Prisma |
 | 1.6 | `src/app/api/cron/weekly-report/`, `src/lib/services/reporting/`, `src/lib/services/email/templates/` | Vercel Cron, Resend, React Email |
-| 1.7 | `src/lib/services/encryption/api-key-manager.ts`, `src/server/api/routers/team.ts` | Novel Pattern 2 (아키텍처 귀속) |
+| 1.7 | `src/lib/services/encryption/api-key-manager.ts`, `src/server/api/routers/project.ts` | Novel Pattern 2 (프로젝트 기반 귀속) |
 | 1.8 | `src/app/(dashboard)/`, `src/components/charts/`, `src/components/dashboard/` | Next.js, Recharts, Tailwind |
 | 1.9 | `__tests__/e2e/`, `__tests__/unit/`, Vercel Analytics, Sentry | Playwright, Vitest, Monitoring |
 
@@ -336,9 +336,15 @@ OpenAI API 호출 (with context)
 
 ---
 
-### Pattern 2: 아키텍처 기반 비용 귀속 (Architecture-based Attribution)
+### Pattern 2: 프로젝트 기반 API 키 격리 (Project-Based API Key Isolation)
 
-**목적**: 태그 대신 API 키 격리로 팀별 비용 자동 귀속
+**목적**: 태그 대신 프로젝트별 API 키 격리로 비용 자동 귀속 및 팀 레벨 집계
+
+**핵심 설계:**
+- **프로젝트가 API 키 소유**: 각 프로젝트가 독립적으로 API 키 관리
+- **프로젝트 멤버십**: 명시적 접근 제어 (ProjectMember 모델)
+- **팀 레벨 긴급 제어**: 팀 관리자는 모든 프로젝트 API 키 비활성화 가능
+- **비용 집계**: 프로젝트 → 팀 자동 집계
 
 **컴포넌트:**
 
@@ -350,7 +356,7 @@ OpenAI API 호출 (with context)
    class ApiKeyManager {
      private kms: KMSClient;
 
-     async encryptApiKey(plainKey: string, teamId: string): Promise<{
+     async encryptApiKey(plainKey: string, projectId: string): Promise<{
        encryptedKey: string;
        encryptedDataKey: string;
      }> {
@@ -365,10 +371,10 @@ OpenAI API 호출 (with context)
        const cipher = crypto.createCipheriv('aes-256-gcm', dataKey, iv);
        const encryptedKey = cipher.update(plainKey, 'utf8', 'hex') + cipher.final('hex');
 
-       // 3. DB 저장
+       // 3. DB 저장 (프로젝트에 귀속)
        await prisma.apiKey.create({
          data: {
-           teamId,
+           projectId,
            encryptedKey,
            encryptedDataKey: encryptedDataKey.toString('base64'),
            iv: iv.toString('hex'),
@@ -393,52 +399,142 @@ OpenAI API 호출 (with context)
    }
    ```
 
-2. **Cost Attribution Engine** (`src/lib/services/openai/cost-collector.ts`)
+2. **Project Access Control** (`src/server/api/routers/project.ts`)
+   ```typescript
+   // 프로젝트 멤버 또는 팀 관리자 확인
+   async function ensureProjectAccess(userId: string, projectId: string) {
+     const project = await prisma.project.findUnique({
+       where: { id: projectId },
+       include: {
+         members: { where: { userId } },
+         team: { include: { members: { where: { userId } } } }
+       }
+     });
+
+     const isProjectMember = project.members.length > 0;
+     const isTeamAdmin = project.team.members.some(m =>
+       m.userId === userId && (m.role === 'admin' || m.role === 'owner')
+     );
+
+     return { isProjectMember, isTeamAdmin, project };
+   }
+
+   // API 키 생성 (프로젝트 멤버만)
+   generateApiKey: protectedProcedure
+     .input(z.object({ projectId: z.string(), provider: z.string(), apiKey: z.string() }))
+     .mutation(async ({ input, ctx }) => {
+       const { isProjectMember } = await ensureProjectAccess(ctx.session.user.id, input.projectId);
+       if (!isProjectMember) throw new TRPCError({ code: 'FORBIDDEN' });
+
+       return await apiKeyManager.encryptApiKey(input.apiKey, input.projectId);
+     }),
+
+   // API 키 비활성화 (프로젝트 멤버 또는 팀 관리자)
+   disableApiKey: protectedProcedure
+     .input(z.object({ apiKeyId: z.string() }))
+     .mutation(async ({ input, ctx }) => {
+       const apiKey = await prisma.apiKey.findUnique({
+         where: { id: input.apiKeyId },
+         include: { project: true }
+       });
+
+       const { isProjectMember, isTeamAdmin } = await ensureProjectAccess(
+         ctx.session.user.id, apiKey.projectId
+       );
+
+       if (!isProjectMember && !isTeamAdmin) {
+         throw new TRPCError({ code: 'FORBIDDEN' });
+       }
+
+       return await prisma.apiKey.update({
+         where: { id: input.apiKeyId },
+         data: { isActive: false }
+       });
+     }),
+   ```
+
+3. **Cost Attribution Engine** (`src/lib/services/openai/cost-collector.ts`)
    ```typescript
    async function collectDailyCosts(): Promise<void> {
-     // 1. 모든 팀의 API 키 가져오기
-     const teams = await prisma.team.findMany({ include: { apiKeys: true } });
+     // 1. 모든 활성 API 키 가져오기 (프로젝트별)
+     const apiKeys = await prisma.apiKey.findMany({
+       where: { isActive: true },
+       include: { project: true }
+     });
 
-     for (const team of teams) {
-       for (const apiKeyRecord of team.apiKeys) {
-         // 2. API 키 복호화
-         const plainApiKey = await apiKeyManager.decryptApiKey(apiKeyRecord.id);
+     for (const apiKeyRecord of apiKeys) {
+       // 2. API 키 복호화
+       const plainApiKey = await apiKeyManager.decryptApiKey(apiKeyRecord.id);
 
-         // 3. OpenAI API에서 사용 내역 수집
-         const usage = await fetchOpenAIUsage(plainApiKey, yesterday);
+       // 3. OpenAI API에서 사용 내역 수집
+       const usage = await fetchOpenAIUsage(plainApiKey, yesterday);
 
-         // 4. team_id로 자동 귀속 (태그 불필요)
-         await prisma.costData.createMany({
-           data: usage.map(u => ({
-             teamId: team.id,
-             apiKeyId: apiKeyRecord.id,
-             model: u.model,
-             tokens: u.tokens,
-             cost: u.cost,
-             date: yesterday,
-           })),
-         });
-       }
+       // 4. project_id로 자동 귀속 (태그 불필요)
+       await prisma.costData.createMany({
+         data: usage.map(u => ({
+           projectId: apiKeyRecord.projectId,  // 프로젝트에 귀속
+           apiKeyId: apiKeyRecord.id,
+           provider: 'openai',
+           service: 'gpt',
+           model: u.model,
+           tokens: u.tokens,
+           cost: u.cost,
+           date: yesterday,
+         })),
+       });
      }
    }
    ```
 
-3. **Isolation Advisor** (`src/app/(dashboard)/architecture/page.tsx`)
-   - AWS: "팀별 AWS 계정 분리" 권고 (Organizations 사용)
+4. **Team Cost Aggregation** (`src/server/api/routers/cost.ts`)
+   ```typescript
+   // 팀별 비용은 프로젝트 비용을 집계
+   getCostByTeam: protectedProcedure
+     .input(z.object({ teamId: z.string() }))
+     .query(async ({ input }) => {
+       // 팀의 모든 프로젝트 가져오기
+       const projects = await prisma.project.findMany({
+         where: { teamId: input.teamId },
+         select: { id: true }
+       });
+
+       const projectIds = projects.map(p => p.id);
+
+       // 프로젝트별 비용 집계
+       const costs = await prisma.costData.groupBy({
+         by: ['date'],
+         where: { projectId: { in: projectIds } },
+         _sum: { cost: true }
+       });
+
+       return costs;
+     }),
+   ```
+
+5. **Isolation Advisor** (`src/app/(dashboard)/architecture/page.tsx`)
+   - OpenAI: "프로젝트별 API 키 분리" 권고 (이미 구현됨)
+   - AWS: "프로젝트별 AWS 계정 또는 IAM Role 분리" 권고
    - Azure: "프로젝트별 리소스 그룹 격리" 권고
    - 교육 콘텐츠: "왜 태그보다 격리가 좋은가?"
 
 **데이터 흐름:**
 ```
-팀 생성
-  → API Key Manager가 고유 OpenAI 키 발급
-  → AWS KMS로 암호화 후 저장 (team_id 연결)
-  → 팀이 해당 키 사용
+프로젝트 생성
+  → 생성자가 첫 번째 프로젝트 멤버로 자동 추가
+  → 프로젝트 멤버가 OpenAI API 키 등록
+  → AWS KMS로 암호화 후 저장 (project_id 연결)
+  → 프로젝트가 해당 키 사용
   → 일일 배치 Cron (매일 오전 9시)
   → Cost Collector가 API 키별 비용 수집
-  → api_key_id → team_id 매핑으로 자동 귀속
-  → 태그 없이 팀별 비용 집계 완료
+  → api_key_id → project_id 매핑으로 자동 귀속
+  → 팀 레벨 보고 시 프로젝트 비용 자동 집계
+  → 태그 없이 프로젝트 및 팀별 비용 집계 완료
 ```
+
+**권한 모델:**
+- **프로젝트 멤버**: API 키 등록, 조회, 비활성화 가능
+- **팀 관리자**: 모든 프로젝트 API 키 조회 및 긴급 비활성화 가능
+- **프로젝트 멤버십**: ProjectMember 모델로 명시적 관리
 
 **영향받는 Epic:** Epic 1 (Story 1.7), Epic 2 (Story 2.1, 2.3)
 
@@ -791,8 +887,9 @@ model User {
   updated_at    DateTime  @updatedAt
 
   // Relations
-  sessions      Session[]
-  teams         TeamMember[]
+  sessions           Session[]
+  teams              TeamMember[]
+  projectMemberships ProjectMember[]
 
   @@map("users")
 }
@@ -816,8 +913,7 @@ model Team {
 
   // Relations
   members    TeamMember[]
-  api_keys   ApiKey[]
-  cost_data  CostData[]
+  projects   Project[]
 
   @@map("teams")
 }
@@ -838,7 +934,7 @@ model TeamMember {
 // API 키 (Story 1.7, 2.1 - KMS 암호화)
 model ApiKey {
   id                 String   @id @default(cuid())
-  team_id            String
+  project_id         String
   provider           String   // "openai" | "aws" | "azure"
   encrypted_key      String   @db.Text
   encrypted_data_key String   @db.Text // KMS Data Key
@@ -846,10 +942,10 @@ model ApiKey {
   is_active          Boolean  @default(true)
   created_at         DateTime @default(now())
 
-  team      Team       @relation(fields: [team_id], references: [id], onDelete: Cascade)
+  project   Project    @relation(fields: [project_id], references: [id], onDelete: Cascade)
   cost_data CostData[]
 
-  @@index([team_id, provider])
+  @@index([project_id])
   @@map("api_keys")
 }
 
@@ -862,10 +958,28 @@ model Project {
   created_at  DateTime @default(now())
 
   // Relations
+  team      Team             @relation(fields: [team_id], references: [id])
+  members   ProjectMember[]
+  api_keys  ApiKey[]
   cost_data CostData[]
   metrics   ProjectMetrics?
 
   @@map("projects")
+}
+
+// 프로젝트 멤버 (Novel Pattern 2 - 프로젝트 기반 접근 제어)
+model ProjectMember {
+  id         String   @id @default(cuid())
+  project_id String
+  user_id    String
+  created_at DateTime @default(now())
+
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([project_id, user_id])
+  @@index([user_id])
+  @@map("project_members")
 }
 
 // 프로젝트 성과 메트릭 (Novel Pattern 1)
@@ -883,8 +997,7 @@ model ProjectMetrics {
 // 비용 데이터 (Story 1.2, 2.2)
 model CostData {
   id          String   @id @default(cuid())
-  team_id     String
-  project_id  String?
+  project_id  String
   api_key_id  String
   provider    String   // "openai" | "aws" | "azure"
   service     String   // "gpt-4" | "SageMaker" | "Azure OpenAI"
@@ -892,6 +1005,7 @@ model CostData {
   tokens      Int?     // OpenAI only
   cost        Decimal  @db.Decimal(10,2)
   date        DateTime @db.Date
+  snapshot_id String?  // OpenAI snapshot ID
 
   // Novel Pattern 1: Context
   task_type   String?  // "chat" | "embedding" | "fine-tuning"
@@ -899,11 +1013,9 @@ model CostData {
 
   created_at  DateTime @default(now())
 
-  team    Team    @relation(fields: [team_id], references: [id])
-  project Project? @relation(fields: [project_id], references: [id])
+  project Project @relation(fields: [project_id], references: [id], onDelete: Restrict)
   api_key ApiKey  @relation(fields: [api_key_id], references: [id])
 
-  @@index([team_id, date])
   @@index([project_id, date])
   @@map("cost_data")
 }
@@ -1578,30 +1690,41 @@ Context Tracker + Value Metrics + Efficiency Calculator 패턴
 
 ---
 
-### ADR-007: Novel Pattern - 아키텍처 기반 귀속
+### ADR-007: Novel Pattern - 프로젝트 기반 API 키 격리
 
-**날짜**: 2025-10-31
+**날짜**: 2025-11-02 (2025-10-31 초안, 2025-11-02 개정)
 **상태**: Accepted
 
 **컨텍스트**:
 태그 기반 비용 귀속은 사용자 규율 의존, 실패 확률 높음. PRD는 자동 귀속 요구 (FR007, FR010).
+초기에는 팀별 API 키를 고려했으나, 실제 사용 패턴에서는 팀 내 프로젝트별로 다른 API 키를 사용하는 것이 더 자연스러움.
 
 **결정**:
-API 키 격리 기반 자동 귀속
+프로젝트별 API 키 격리 기반 자동 귀속 + 팀 레벨 집계
 
 **근거**:
-- 팀별 고유 OpenAI API 키 발급
-- `api_keys.team_id` 외래 키로 자동 연결
-- 일일 배치에서 API 키로 팀 식별
+- 프로젝트별 고유 OpenAI API 키 발급 (더 세밀한 격리)
+- `api_keys.project_id` 외래 키로 자동 연결
+- 일일 배치에서 API 키로 프로젝트 식별
+- 팀 비용은 프로젝트 비용 자동 집계
 - 태그 불필요
+- 프로젝트 멤버십 기반 명시적 접근 제어
 
 **구현**:
 - AWS KMS로 API 키 암호화 저장
-- Cost Collector가 `api_key_id` → `team_id` 매핑
-- Isolation Advisor가 클라우드 계정 분리 권고
+- Cost Collector가 `api_key_id` → `project_id` 매핑
+- ProjectMember 모델로 프로젝트 접근 제어
+- 팀 관리자는 모든 프로젝트 API 키 긴급 비활성화 가능
+- Isolation Advisor가 클라우드 계정/리소스 분리 권고
 
 **확장성**:
-- Epic 2에서 AWS/Azure도 동일 패턴 적용 (계정/리소스 그룹 분리)
+- Epic 2에서 AWS/Azure도 동일 패턴 적용 (프로젝트별 계정/리소스 그룹 분리)
+- 프로젝트 멤버 역할 확장 가능 (현재는 평등한 멤버십)
+
+**마이그레이션**:
+- Breaking change: 모든 기존 팀 API 키 삭제
+- 팀 멤버를 모든 프로젝트에 자동 추가
+- 사용자가 프로젝트별로 API 키 재등록 필요
 
 ---
 

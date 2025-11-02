@@ -1,9 +1,13 @@
 /**
  * Cost tRPC Router
  *
- * Provides API endpoints for cost data queries
- * - getSummary: Get yesterday's and this week's total costs
+ * Provides API endpoints for cost data queries (project-based with team aggregation)
+ * - getSummary: Get yesterday's and this week's total costs (aggregated from projects)
  * - getRecentCosts: Get recent cost data for charts/analysis
+ * - getCostByTeam: Get cost breakdown by team (aggregated from projects)
+ * - getTeamCostsTopN: Get top N teams by cost (aggregated from projects)
+ *
+ * Note: Costs are now stored per-project and aggregated to team level
  */
 
 import { TRPCError } from "@trpc/server";
@@ -63,6 +67,28 @@ export const costRouter = createTRPCRouter({
 				};
 			}
 
+			// Get all projects for these teams
+			const projects = await db.project.findMany({
+				where: {
+					teamId: { in: teamIds },
+				},
+				select: {
+					id: true,
+				},
+			});
+
+			const projectIds = projects.map((p) => p.id);
+
+			if (projectIds.length === 0) {
+				return {
+					yesterdayCost: 0,
+					thisWeekCost: 0,
+					weeklyChange: 0,
+					thisMonthCost: 0,
+					monthlyChange: 0,
+				};
+			}
+
 			const now = new Date();
 			const yesterday = subDays(now, 1);
 			const yesterdayStart = new Date(yesterday.setHours(0, 0, 0, 0));
@@ -92,10 +118,10 @@ export const costRouter = createTRPCRouter({
 				999,
 			);
 
-			// Query yesterday's cost
+			// Query yesterday's cost (aggregated from projects)
 			const yesterdayData = await db.costData.aggregate({
 				where: {
-					teamId: { in: teamIds },
+					projectId: { in: projectIds },
 					date: {
 						gte: yesterdayStart,
 						lte: yesterdayEnd,
@@ -106,10 +132,10 @@ export const costRouter = createTRPCRouter({
 				},
 			});
 
-			// Query this week's cost
+			// Query this week's cost (aggregated from projects)
 			const thisWeekData = await db.costData.aggregate({
 				where: {
-					teamId: { in: teamIds },
+					projectId: { in: projectIds },
 					date: {
 						gte: weekStart,
 						lte: weekEnd,
@@ -120,10 +146,10 @@ export const costRouter = createTRPCRouter({
 				},
 			});
 
-			// Query last week's cost for comparison
+			// Query last week's cost for comparison (aggregated from projects)
 			const lastWeekData = await db.costData.aggregate({
 				where: {
-					teamId: { in: teamIds },
+					projectId: { in: projectIds },
 					date: {
 						gte: lastWeekStart,
 						lte: lastWeekEnd,
@@ -134,10 +160,10 @@ export const costRouter = createTRPCRouter({
 				},
 			});
 
-			// Query this month's cost
+			// Query this month's cost (aggregated from projects)
 			const thisMonthData = await db.costData.aggregate({
 				where: {
-					teamId: { in: teamIds },
+					projectId: { in: projectIds },
 					date: {
 						gte: monthStart,
 						lte: monthEnd,
@@ -148,10 +174,10 @@ export const costRouter = createTRPCRouter({
 				},
 			});
 
-			// Query last month's cost for comparison
+			// Query last month's cost for comparison (aggregated from projects)
 			const lastMonthData = await db.costData.aggregate({
 				where: {
-					teamId: { in: teamIds },
+					projectId: { in: projectIds },
 					date: {
 						gte: lastMonthStart,
 						lte: lastMonthEnd,
@@ -165,8 +191,8 @@ export const costRouter = createTRPCRouter({
 			const yesterdayCost = yesterdayData._sum.cost?.toNumber() ?? 0;
 			const thisWeekCost = thisWeekData._sum.cost?.toNumber() ?? 0;
 			const lastWeekCost = lastWeekData._sum.cost?.toNumber() ?? 0;
-			const thisMonthCost = thisMonthData._sum.cost?.toNumber() ?? 0;
-			const lastMonthCost = lastMonthData._sum.cost?.toNumber() ?? 0;
+			const thisMonthCost = thisMonthData._sum?.cost?.toNumber() ?? 0;
+			const lastMonthCost = lastMonthData._sum?.cost?.toNumber() ?? 0;
 
 			// Calculate weekly change percentage
 			const weeklyChange =
@@ -229,11 +255,34 @@ export const costRouter = createTRPCRouter({
 				return [];
 			}
 
+			// Get all projects for these teams
+			const projects = await db.project.findMany({
+				where: {
+					teamId: { in: teamIds },
+				},
+				select: {
+					id: true,
+					teamId: true,
+					team: {
+						select: {
+							id: true,
+							name: true,
+						},
+					},
+				},
+			});
+
+			const projectIds = projects.map((p) => p.id);
+
+			if (projectIds.length === 0) {
+				return [];
+			}
+
 			const startDate = subDays(new Date(), input.days);
 
 			const costs = await db.costData.findMany({
 				where: {
-					teamId: { in: teamIds },
+					projectId: { in: projectIds },
 					date: {
 						gte: startDate,
 					},
@@ -249,24 +298,25 @@ export const costRouter = createTRPCRouter({
 					service: true,
 					model: true,
 					tokens: true,
-					team: {
-						select: {
-							id: true,
-							name: true,
-						},
-					},
 					project: {
 						select: {
 							id: true,
 							name: true,
+							teamId: true,
 						},
 					},
 				},
 			});
 
+			// Create a map of project -> team for easy lookup
+			const projectTeamMap = new Map(
+				projects.map((p) => [p.id, { id: p.team.id, name: p.team.name }]),
+			);
+
 			return costs.map((cost) => ({
 				...cost,
 				cost: cost.cost.toNumber(),
+				team: cost.project ? projectTeamMap.get(cost.project.id) : undefined,
 			}));
 		}),
 
@@ -298,10 +348,28 @@ export const costRouter = createTRPCRouter({
 
 			const startDate = subDays(new Date(), input.days);
 
-			const costsByTeam = await db.costData.groupBy({
-				by: ["teamId"],
+			// Get all projects for these teams
+			const projects = await db.project.findMany({
 				where: {
 					teamId: { in: teamIds },
+				},
+				select: {
+					id: true,
+					teamId: true,
+				},
+			});
+
+			const projectIds = projects.map((p) => p.id);
+
+			if (projectIds.length === 0) {
+				return [];
+			}
+
+			// Get costs by project
+			const costsByProject = await db.costData.groupBy({
+				by: ["projectId"],
+				where: {
+					projectId: { in: projectIds },
 					date: {
 						gte: startDate,
 					},
@@ -314,10 +382,33 @@ export const costRouter = createTRPCRouter({
 				},
 			});
 
+			// Create a map of project -> team
+			const projectTeamMap = new Map(projects.map((p) => [p.id, p.teamId]));
+
+			// Aggregate costs by team
+			const teamCostsMap = new Map<
+				string,
+				{ totalCost: number; recordCount: number }
+			>();
+
+			for (const cost of costsByProject) {
+				const teamId = projectTeamMap.get(cost.projectId);
+				if (!teamId) continue;
+
+				const existing = teamCostsMap.get(teamId) ?? {
+					totalCost: 0,
+					recordCount: 0,
+				};
+				teamCostsMap.set(teamId, {
+					totalCost: existing.totalCost + (cost._sum.cost?.toNumber() ?? 0),
+					recordCount: existing.recordCount + cost._count.id,
+				});
+			}
+
 			// Fetch team names
 			const teams = await db.team.findMany({
 				where: {
-					id: { in: costsByTeam.map((c) => c.teamId) },
+					id: { in: Array.from(teamCostsMap.keys()) },
 				},
 				select: {
 					id: true,
@@ -327,11 +418,11 @@ export const costRouter = createTRPCRouter({
 
 			const teamMap = new Map(teams.map((t) => [t.id, t.name]));
 
-			return costsByTeam.map((cost) => ({
-				teamId: cost.teamId,
-				teamName: teamMap.get(cost.teamId) ?? "Unknown",
-				totalCost: cost._sum.cost?.toNumber() ?? 0,
-				recordCount: cost._count.id,
+			return Array.from(teamCostsMap.entries()).map(([teamId, data]) => ({
+				teamId,
+				teamName: teamMap.get(teamId) ?? "Unknown",
+				totalCost: data.totalCost,
+				recordCount: data.recordCount,
 			}));
 		}),
 
@@ -365,11 +456,28 @@ export const costRouter = createTRPCRouter({
 
 			const startDate = subDays(new Date(), input.days);
 
-			// Aggregate costs by team
-			const costsByTeam = await db.costData.groupBy({
-				by: ["teamId"],
+			// Get all projects for these teams
+			const projects = await db.project.findMany({
 				where: {
 					teamId: { in: teamIds },
+				},
+				select: {
+					id: true,
+					teamId: true,
+				},
+			});
+
+			const projectIds = projects.map((p) => p.id);
+
+			if (projectIds.length === 0) {
+				return [];
+			}
+
+			// Aggregate costs by project
+			const costsByProject = await db.costData.groupBy({
+				by: ["projectId"],
+				where: {
+					projectId: { in: projectIds },
 					date: {
 						gte: startDate,
 					},
@@ -382,10 +490,33 @@ export const costRouter = createTRPCRouter({
 				},
 			});
 
+			// Create a map of project -> team
+			const projectTeamMap = new Map(projects.map((p) => [p.id, p.teamId]));
+
+			// Aggregate costs by team
+			const teamCostsMap = new Map<
+				string,
+				{ totalCost: number; recordCount: number }
+			>();
+
+			for (const cost of costsByProject) {
+				const teamId = projectTeamMap.get(cost.projectId);
+				if (!teamId) continue;
+
+				const existing = teamCostsMap.get(teamId) ?? {
+					totalCost: 0,
+					recordCount: 0,
+				};
+				teamCostsMap.set(teamId, {
+					totalCost: existing.totalCost + (cost._sum.cost?.toNumber() ?? 0),
+					recordCount: existing.recordCount + cost._count.id,
+				});
+			}
+
 			// Fetch team details
 			const teams = await db.team.findMany({
 				where: {
-					id: { in: costsByTeam.map((c) => c.teamId) },
+					id: { in: Array.from(teamCostsMap.keys()) },
 				},
 				select: {
 					id: true,
@@ -397,15 +528,15 @@ export const costRouter = createTRPCRouter({
 			const teamMap = new Map(teams.map((t) => [t.id, t]));
 
 			// Combine and sort by total cost (descending)
-			const results = costsByTeam
-				.map((cost) => {
-					const team = teamMap.get(cost.teamId);
+			const results = Array.from(teamCostsMap.entries())
+				.map(([teamId, data]) => {
+					const team = teamMap.get(teamId);
 					return {
-						teamId: cost.teamId,
+						teamId,
 						teamName: team?.name ?? "Unknown",
-						totalCost: cost._sum.cost?.toNumber() ?? 0,
+						totalCost: data.totalCost,
 						budget: team?.budget?.toNumber(),
-						recordCount: cost._count.id,
+						recordCount: data.recordCount,
 					};
 				})
 				.sort((a, b) => b.totalCost - a.totalCost)
@@ -463,12 +594,27 @@ export const costRouter = createTRPCRouter({
 			const lastWeekStart = subDays(startDate, input.days);
 			const lastWeekEnd = subDays(now, input.days);
 
+			// Get all projects for these teams
+			const teamProjects = await db.project.findMany({
+				where: {
+					teamId: { in: teamIds },
+				},
+				select: {
+					id: true,
+				},
+			});
+
+			const teamProjectIds = teamProjects.map((p) => p.id);
+
+			if (teamProjectIds.length === 0) {
+				return [];
+			}
+
 			// Aggregate costs by project for current period
 			const costsByProject = await db.costData.groupBy({
 				by: ["projectId"],
 				where: {
-					teamId: { in: teamIds },
-					projectId: { not: null },
+					projectId: { in: teamProjectIds },
 					date: {
 						gte: startDate,
 					},
@@ -485,8 +631,7 @@ export const costRouter = createTRPCRouter({
 			const lastWeekCostsByProject = await db.costData.groupBy({
 				by: ["projectId"],
 				where: {
-					teamId: { in: teamIds },
-					projectId: { not: null },
+					projectId: { in: teamProjectIds },
 					date: {
 						gte: lastWeekStart,
 						lt: lastWeekEnd,
@@ -500,7 +645,7 @@ export const costRouter = createTRPCRouter({
 			const lastWeekCostMap = new Map(
 				lastWeekCostsByProject.map((c) => [
 					c.projectId,
-					c._sum.cost?.toNumber() ?? 0,
+					c._sum?.cost?.toNumber() ?? 0,
 				]),
 			);
 
@@ -531,7 +676,7 @@ export const costRouter = createTRPCRouter({
 			const results = costsByProject
 				.map((cost) => {
 					const project = projectMap.get(cost.projectId ?? "");
-					const currentCost = cost._sum.cost?.toNumber() ?? 0;
+					const currentCost = cost._sum?.cost?.toNumber() ?? 0;
 					const lastWeekCost = lastWeekCostMap.get(cost.projectId ?? "") ?? 0;
 
 					// Calculate weekly change percentage
@@ -546,7 +691,7 @@ export const costRouter = createTRPCRouter({
 						teamName: project?.team?.name ?? "Unknown",
 						totalCost: currentCost,
 						weeklyChange,
-						recordCount: cost._count.id,
+						recordCount: cost._count?.id ?? 0,
 					};
 				})
 				.sort((a, b) => b.totalCost - a.totalCost)

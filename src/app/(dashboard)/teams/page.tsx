@@ -205,12 +205,6 @@ export default function TeamsPage() {
 													{team.memberCount}명
 												</span>
 											</div>
-											<div className="flex items-center justify-between">
-												<span className="text-muted-foreground">API 키</span>
-												<span className="font-medium">
-													{team.apiKeyCount}개
-												</span>
-											</div>
 											{team.budget && (
 												<div className="flex items-center justify-between">
 													<span className="text-muted-foreground">월 예산</span>

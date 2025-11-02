@@ -36,7 +36,7 @@ interface OpenAIUsageResponse {
  * Novel Pattern 1: Cost-Value Attribution
  */
 export interface CollectedCostData {
-	teamId: string;
+	projectId: string; // Required: costs are attributed to projects
 	apiKeyId: string;
 	provider: string;
 	service: string;
@@ -45,8 +45,7 @@ export interface CollectedCostData {
 	cost: number; // in dollars
 	date: Date;
 	snapshotId: string; // OpenAI snapshot_id for deduplication
-	// Novel Pattern 1: Context metadata
-	projectId?: string; // Optional project association
+	// Novel Pattern 1: Context metadata (optional)
 	taskType?: string; // Optional task type (e.g., "chat", "embedding", "fine-tuning")
 	userIntent?: string; // Optional user intent description
 }
@@ -145,14 +144,14 @@ export async function collectDailyCosts(
 
 	logger.info({ date: dateString }, "Starting daily cost collection");
 
-	// Fetch all active OpenAI API keys
+	// Fetch all active OpenAI API keys with their projects
 	const apiKeys = await db.apiKey.findMany({
 		where: {
 			provider: "openai",
 			isActive: true,
 		},
 		include: {
-			team: true,
+			project: true,
 		},
 	});
 
@@ -170,7 +169,7 @@ export async function collectDailyCosts(
 	for (const apiKeyRecord of apiKeys) {
 		try {
 			logger.info(
-				{ apiKeyId: apiKeyRecord.id, teamId: apiKeyRecord.teamId },
+				{ apiKeyId: apiKeyRecord.id, projectId: apiKeyRecord.projectId },
 				"Processing API key",
 			);
 
@@ -211,7 +210,7 @@ export async function collectDailyCosts(
 			// Transform OpenAI response to our cost data format
 			for (const usage of usageData) {
 				allCostData.push({
-					teamId: apiKeyRecord.teamId,
+					projectId: apiKeyRecord.projectId,
 					apiKeyId: apiKeyRecord.id,
 					provider: "openai",
 					service: usage.model, // e.g., "gpt-4", "gpt-3.5-turbo"
@@ -227,7 +226,7 @@ export async function collectDailyCosts(
 			logger.error(
 				{
 					apiKeyId: apiKeyRecord.id,
-					teamId: apiKeyRecord.teamId,
+					projectId: apiKeyRecord.projectId,
 					error: error instanceof Error ? error.message : String(error),
 				},
 				"Failed to collect costs for API key",
@@ -279,8 +278,7 @@ export async function storeCostData(
 
 		const result = await db.costData.createMany({
 			data: batch.map((record) => ({
-				teamId: record.teamId,
-				projectId: record.projectId ?? null,
+				projectId: record.projectId,
 				apiKeyId: record.apiKeyId,
 				provider: record.provider,
 				service: record.service,

@@ -50,7 +50,7 @@ export default async function DashboardLayout({
 						<nav className="space-y-2" aria-label="주요 네비게이션">
 							<Link
 								href="/dashboard"
-								className="block rounded-md bg-primary/10 px-3 py-2 font-medium text-primary text-sm"
+								className="block rounded-md px-3 py-2 font-medium text-muted-foreground text-sm hover:bg-muted hover:text-foreground"
 							>
 								대시보드
 							</Link>
@@ -59,6 +59,18 @@ export default async function DashboardLayout({
 								className="block rounded-md px-3 py-2 font-medium text-muted-foreground text-sm hover:bg-muted hover:text-foreground"
 							>
 								프로젝트
+							</Link>
+							<Link
+								href="/teams"
+								className="block rounded-md px-3 py-2 font-medium text-muted-foreground text-sm hover:bg-muted hover:text-foreground"
+							>
+								팀 관리
+							</Link>
+							<Link
+								href="/reports"
+								className="block rounded-md px-3 py-2 font-medium text-muted-foreground text-sm hover:bg-muted hover:text-foreground"
+							>
+								리포트
 							</Link>
 						</nav>
 					</aside>

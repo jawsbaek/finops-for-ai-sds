@@ -14,6 +14,7 @@
 		"db:studio": "prisma studio",
 		"dev": "next dev --turbo",
 		"migrate:users": "bun run scripts/migrate-users-to-teams.ts",
+		"migrate:project-keys": "bun run scripts/migrate-to-project-based-keys.ts",
 		"postinstall": "prisma generate && lefthook install",
 		"preview": "next build && next start",
 		"start": "next start",

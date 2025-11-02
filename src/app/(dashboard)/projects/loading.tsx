@@ -1,8 +1,9 @@
-import { Card } from "@/components/ui/card";
-
 /**
  * Loading UI for Projects page
- * Shows skeleton loaders while server data is being fetched
+ * Shows a neutral loading spinner while server data is being fetched
+ *
+ * Note: We intentionally show a simple spinner instead of skeleton cards
+ * to avoid creating false expectations when there might be no projects.
  */
 export default function ProjectsLoading() {
 	return (
@@ -16,28 +17,14 @@ export default function ProjectsLoading() {
 				<div className="h-10 w-32 animate-pulse rounded-md bg-muted" />
 			</div>
 
-			{/* Projects Grid Skeleton */}
-			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-				{[1, 2, 3, 4, 5, 6].map((i) => (
-					<Card key={i} className="border-2 p-5">
-						<div className="space-y-4">
-							{/* Header */}
-							<div className="flex items-start justify-between">
-								<div className="flex-1 space-y-1">
-									<div className="h-5 w-32 animate-pulse rounded bg-muted" />
-									<div className="h-4 w-24 animate-pulse rounded bg-muted" />
-								</div>
-								<div className="ml-2 h-6 w-12 animate-pulse rounded bg-muted" />
-							</div>
-
-							{/* Cost */}
-							<div className="space-y-1">
-								<div className="h-4 w-20 animate-pulse rounded bg-muted" />
-								<div className="h-8 w-28 animate-pulse rounded bg-muted" />
-							</div>
-						</div>
-					</Card>
-				))}
+			{/* Centered Loading Spinner */}
+			<div className="flex min-h-[400px] items-center justify-center">
+				<div className="flex flex-col items-center gap-3">
+					<div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+					<p className="text-muted-foreground text-sm">
+						프로젝트 정보를 불러오는 중...
+					</p>
+				</div>
 			</div>
 		</div>
 	);

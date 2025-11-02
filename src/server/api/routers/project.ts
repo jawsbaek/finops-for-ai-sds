@@ -2,17 +2,111 @@
  * Project tRPC Router
  *
  * Provides API endpoints for project management and cost-value tracking
- * - create: Create a new project with required name
+ * - create: Create a new project with required name and auto-add creator as member
  * - getAll: Get all projects for user's teams with recent costs
  * - getById: Get project details with cost trends and efficiency metrics
  * - updateMetrics: Update project performance metrics (success count, feedback score)
+ * - addMember: Add a member to a project (Team admin only)
+ * - removeMember: Remove a member from a project (Team admin only)
+ * - getMembers: Get all members of a project
+ * - generateApiKey: Add an API key to a project (project member or Team admin)
+ * - getApiKeys: Get all API keys for a project
+ * - disableApiKey: Disable an API key (project member or Team admin)
  */
 
 import { TRPCError } from "@trpc/server";
 import { subDays } from "date-fns";
 import { z } from "zod";
+import { logger } from "~/lib/logger";
+import {
+	generateEncryptedApiKey,
+	validateApiKey,
+} from "~/lib/services/encryption/api-key-manager";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { db } from "~/server/db";
+
+/**
+ * Helper: Check if user has access to a project
+ * User has access if they are:
+ * 1. A member of the project, OR
+ * 2. An owner/admin of the project's team
+ */
+async function ensureProjectAccess(userId: string, projectId: string) {
+	const project = await db.project.findUnique({
+		where: { id: projectId },
+		include: {
+			members: {
+				where: { userId },
+			},
+			team: {
+				include: {
+					members: {
+						where: {
+							userId,
+							role: { in: ["owner", "admin"] },
+						},
+					},
+				},
+			},
+		},
+	});
+
+	if (!project) {
+		throw new TRPCError({
+			code: "NOT_FOUND",
+			message: "Project not found",
+		});
+	}
+
+	const isProjectMember = project.members.length > 0;
+	const isTeamAdmin = project.team.members.length > 0;
+
+	if (!isProjectMember && !isTeamAdmin) {
+		throw new TRPCError({
+			code: "FORBIDDEN",
+			message: "You do not have access to this project",
+		});
+	}
+
+	return { isProjectMember, isTeamAdmin, project };
+}
+
+/**
+ * Helper: Check if user is a team admin (owner or admin)
+ */
+async function ensureTeamAdmin(userId: string, projectId: string) {
+	const project = await db.project.findUnique({
+		where: { id: projectId },
+		include: {
+			team: {
+				include: {
+					members: {
+						where: {
+							userId,
+							role: { in: ["owner", "admin"] },
+						},
+					},
+				},
+			},
+		},
+	});
+
+	if (!project) {
+		throw new TRPCError({
+			code: "NOT_FOUND",
+			message: "Project not found",
+		});
+	}
+
+	if (project.team.members.length === 0) {
+		throw new TRPCError({
+			code: "FORBIDDEN",
+			message: "Team admin access required",
+		});
+	}
+
+	return project;
+}
 
 export const projectRouter = createTRPCRouter({
 	/**
@@ -20,6 +114,7 @@ export const projectRouter = createTRPCRouter({
 	 *
 	 * AC #1: Project name is required
 	 * Automatically initializes ProjectMetrics with default values
+	 * Auto-adds creator as first project member
 	 */
 	create: protectedProcedure
 		.input(
@@ -46,7 +141,7 @@ export const projectRouter = createTRPCRouter({
 				});
 			}
 
-			// Create project with metrics
+			// Create project with metrics and auto-add creator as first member
 			const project = await db.project.create({
 				data: {
 					name: input.name,
@@ -58,6 +153,11 @@ export const projectRouter = createTRPCRouter({
 							feedbackScore: null,
 						},
 					},
+					members: {
+						create: {
+							userId,
+						},
+					},
 				},
 				include: {
 					team: {
@@ -67,6 +167,17 @@ export const projectRouter = createTRPCRouter({
 						},
 					},
 					metrics: true,
+					members: {
+						include: {
+							user: {
+								select: {
+									id: true,
+									email: true,
+									name: true,
+								},
+							},
+						},
+					},
 				},
 			});
 
@@ -188,15 +299,26 @@ export const projectRouter = createTRPCRouter({
 						select: {
 							id: true,
 							name: true,
-							apiKeys: {
+						},
+					},
+					members: {
+						include: {
+							user: {
 								select: {
 									id: true,
-									provider: true,
-									isActive: true,
-									createdAt: true,
-									encryptedKey: true, // For getting last 4 chars
+									email: true,
+									name: true,
 								},
 							},
+						},
+					},
+					apiKeys: {
+						select: {
+							id: true,
+							provider: true,
+							isActive: true,
+							createdAt: true,
+							encryptedKey: true, // For getting last 4 chars
 						},
 					},
 					metrics: true,
@@ -273,18 +395,15 @@ export const projectRouter = createTRPCRouter({
 
 			return {
 				...project,
-				team: {
-					...project.team,
-					apiKeys: project.team.apiKeys.map((key) => {
-						// Security: Never send encrypted credentials to client
-						const { encryptedKey, ...safeKey } = key;
-						return {
-							...safeKey,
-							// Only include last 4 chars for display
-							last4: encryptedKey.slice(-4),
-						};
-					}),
-				},
+				apiKeys: project.apiKeys.map((key) => {
+					// Security: Never send encrypted credentials to client
+					const { encryptedKey, ...safeKey } = key;
+					return {
+						...safeKey,
+						// Only include last 4 chars for display
+						last4: encryptedKey.slice(-4),
+					};
+				}),
 				costData: project.costData.map((cost) => ({
 					...cost,
 					cost: cost.cost.toNumber(),
@@ -362,5 +481,351 @@ export const projectRouter = createTRPCRouter({
 			});
 
 			return metrics;
+		}),
+
+	/**
+	 * Add a member to a project
+	 * Only Team owner/admin can add members
+	 */
+	addMember: protectedProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+				userId: z.string(),
+			}),
+		)
+		.mutation(async ({ input, ctx }) => {
+			const userId = ctx.session.user.id;
+
+			// Only Team admin can add members
+			await ensureTeamAdmin(userId, input.projectId);
+
+			// Check if user exists
+			const user = await db.user.findUnique({
+				where: { id: input.userId },
+				select: { id: true, email: true },
+			});
+
+			if (!user) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "User not found",
+				});
+			}
+
+			// Check if already a member
+			const existingMember = await db.projectMember.findUnique({
+				where: {
+					projectId_userId: {
+						projectId: input.projectId,
+						userId: input.userId,
+					},
+				},
+			});
+
+			if (existingMember) {
+				throw new TRPCError({
+					code: "CONFLICT",
+					message: "User is already a member of this project",
+				});
+			}
+
+			// Add member
+			const member = await db.projectMember.create({
+				data: {
+					projectId: input.projectId,
+					userId: input.userId,
+				},
+				include: {
+					user: {
+						select: {
+							id: true,
+							email: true,
+							name: true,
+						},
+					},
+				},
+			});
+
+			logger.info(
+				{
+					projectId: input.projectId,
+					newMemberId: input.userId,
+					addedBy: userId,
+				},
+				"Project member added",
+			);
+
+			return member;
+		}),
+
+	/**
+	 * Remove a member from a project
+	 * Only Team owner/admin can remove members
+	 */
+	removeMember: protectedProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+				userId: z.string(),
+			}),
+		)
+		.mutation(async ({ input, ctx }) => {
+			const userId = ctx.session.user.id;
+
+			// Only Team admin can remove members
+			await ensureTeamAdmin(userId, input.projectId);
+
+			// Check if member exists
+			const member = await db.projectMember.findUnique({
+				where: {
+					projectId_userId: {
+						projectId: input.projectId,
+						userId: input.userId,
+					},
+				},
+			});
+
+			if (!member) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "User is not a member of this project",
+				});
+			}
+
+			// Remove member
+			await db.projectMember.delete({
+				where: {
+					projectId_userId: {
+						projectId: input.projectId,
+						userId: input.userId,
+					},
+				},
+			});
+
+			logger.info(
+				{
+					projectId: input.projectId,
+					removedMemberId: input.userId,
+					removedBy: userId,
+				},
+				"Project member removed",
+			);
+
+			return { success: true };
+		}),
+
+	/**
+	 * Get all members of a project
+	 * Project member or Team admin can view
+	 */
+	getMembers: protectedProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+			}),
+		)
+		.query(async ({ input, ctx }) => {
+			const userId = ctx.session.user.id;
+
+			// Ensure user has access to project
+			await ensureProjectAccess(userId, input.projectId);
+
+			// Get all members
+			const members = await db.projectMember.findMany({
+				where: {
+					projectId: input.projectId,
+				},
+				include: {
+					user: {
+						select: {
+							id: true,
+							email: true,
+							name: true,
+						},
+					},
+				},
+				orderBy: {
+					createdAt: "asc",
+				},
+			});
+
+			return members;
+		}),
+
+	/**
+	 * Generate and store an encrypted API key for the project
+	 * Project member or Team admin can add API keys
+	 */
+	generateApiKey: protectedProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+				provider: z.literal("openai"),
+				apiKey: z.string().min(1, "API key is required"),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const userId = ctx.session.user.id;
+
+			// Ensure user has access to project
+			await ensureProjectAccess(userId, input.projectId);
+
+			// Validate API key format (fast fail before expensive operations)
+			const isValid = validateApiKey(input.apiKey, input.provider);
+			if (!isValid) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: `Invalid ${input.provider} API key format`,
+				});
+			}
+
+			// Encrypt the API key using KMS envelope encryption
+			const encrypted = await generateEncryptedApiKey(input.apiKey);
+
+			// Store encrypted key in database
+			const apiKey = await db.apiKey.create({
+				data: {
+					projectId: input.projectId,
+					provider: input.provider,
+					encryptedKey: encrypted.ciphertext,
+					encryptedDataKey: encrypted.encryptedDataKey,
+					iv: encrypted.iv,
+					isActive: true,
+				},
+			});
+
+			logger.info(
+				{
+					apiKeyId: apiKey.id,
+					projectId: input.projectId,
+					provider: input.provider,
+					userId,
+				},
+				"API key added to project",
+			);
+
+			return apiKey;
+		}),
+
+	/**
+	 * Get all API keys for a project
+	 * Project member or Team admin can view
+	 */
+	getApiKeys: protectedProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+			}),
+		)
+		.query(async ({ input, ctx }) => {
+			const userId = ctx.session.user.id;
+
+			// Ensure user has access to project
+			await ensureProjectAccess(userId, input.projectId);
+
+			// Get all API keys
+			const apiKeys = await db.apiKey.findMany({
+				where: {
+					projectId: input.projectId,
+				},
+				select: {
+					id: true,
+					provider: true,
+					isActive: true,
+					createdAt: true,
+					updatedAt: true,
+					encryptedKey: true, // For masking
+				},
+				orderBy: {
+					createdAt: "desc",
+				},
+			});
+
+			// Mask API keys for security
+			return apiKeys.map((key) => {
+				const { encryptedKey, ...safeKey } = key;
+				// Create masked version (first 8 chars + ... + last 4 chars)
+				const maskedKey =
+					encryptedKey.length > 12
+						? `${encryptedKey.slice(0, 8)}...${encryptedKey.slice(-4)}`
+						: "****";
+
+				return {
+					...safeKey,
+					maskedKey,
+				};
+			});
+		}),
+
+	/**
+	 * Disable an API key with audit logging
+	 * Project member or Team admin can disable
+	 */
+	disableApiKey: protectedProcedure
+		.input(
+			z.object({
+				apiKeyId: z.string(),
+				reason: z.string().min(1, "Reason is required"),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const userId = ctx.session.user.id;
+
+			// Get API key with project info
+			const apiKey = await db.apiKey.findUnique({
+				where: { id: input.apiKeyId },
+				include: {
+					project: {
+						select: {
+							id: true,
+							teamId: true,
+						},
+					},
+				},
+			});
+
+			if (!apiKey) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "API key not found",
+				});
+			}
+
+			// Ensure user has access to the project
+			await ensureProjectAccess(userId, apiKey.project.id);
+
+			// Disable the API key
+			const updated = await db.apiKey.update({
+				where: { id: input.apiKeyId },
+				data: { isActive: false },
+			});
+
+			// Create audit log
+			await db.auditLog.create({
+				data: {
+					userId,
+					actionType: "api_key_disabled",
+					resourceType: "api_key",
+					resourceId: input.apiKeyId,
+					metadata: {
+						reason: input.reason,
+						projectId: apiKey.project.id,
+						provider: apiKey.provider,
+					},
+				},
+			});
+
+			logger.info(
+				{
+					apiKeyId: input.apiKeyId,
+					projectId: apiKey.project.id,
+					userId,
+					reason: input.reason,
+				},
+				"API key disabled",
+			);
+
+			return updated;
 		}),
 });

@@ -3,6 +3,9 @@
  *
  * Generates comprehensive weekly cost and efficiency reports
  * for email distribution and archive storage
+ *
+ * Note: Reports are now project-based. Team costs are calculated
+ * by aggregating all projects within the team.
  */
 
 import { endOfWeek, format, startOfWeek, subWeeks } from "date-fns";
@@ -103,11 +106,11 @@ export async function generateWeeklyReport(): Promise<WeeklyReportData> {
 	const projectIds = projectSummaries.map((p) => p.projectId);
 
 	// Calculate total cost for previous week (week before that)
-	// Query all costs for consistent organization total, but separate by project assignment
+	// Query costs by projectId (costs are now project-based)
 	const previousWeekCosts = await db.costData.groupBy({
 		by: ["projectId"],
 		where: {
-			teamId: { in: teamIds },
+			projectId: { in: projectIds },
 			date: {
 				gte: previousWeekStart,
 				lte: previousWeekEnd,
@@ -120,29 +123,10 @@ export async function generateWeeklyReport(): Promise<WeeklyReportData> {
 
 	// Build lookup map for previous week costs (for per-project week-over-week comparison)
 	const previousWeekCostMap = new Map(
-		previousWeekCosts.map((c) => [
-			c.projectId || "unknown",
-			c._sum.cost?.toNumber() ?? 0,
-		]),
+		previousWeekCosts.map((c) => [c.projectId, c._sum?.cost?.toNumber() ?? 0]),
 	);
 
-	// Calculate unassigned costs for current week (projectId = null)
-	const currentWeekUnassignedCost = await db.costData.aggregate({
-		where: {
-			teamId: { in: teamIds },
-			projectId: null,
-			date: {
-				gte: weekStart,
-				lte: weekEnd,
-			},
-		},
-		_sum: {
-			cost: true,
-		},
-	});
-
-	// Note: Previous week unassigned costs are already included in previousWeekCostMap
-	// under the "unknown" key, so they're automatically included in totalPreviousWeekCost
+	// Note: All costs are now assigned to projects (no unassigned costs)
 
 	// Enhance project summaries with week-over-week change
 	const projectsWithChange: WeeklyProjectSummary[] = projectSummaries.map(
@@ -159,14 +143,11 @@ export async function generateWeeklyReport(): Promise<WeeklyReportData> {
 		},
 	);
 
-	// Calculate organization-wide totals (including unassigned costs)
-	const projectCurrentWeekCost = projectSummaries.reduce(
+	// Calculate organization-wide totals (all costs are project-based now)
+	const totalCurrentWeekCost = projectSummaries.reduce(
 		(sum, project) => sum + project.totalCost,
 		0,
 	);
-	const unassignedCurrentCost =
-		currentWeekUnassignedCost._sum.cost?.toNumber() ?? 0;
-	const totalCurrentWeekCost = projectCurrentWeekCost + unassignedCurrentCost;
 
 	const totalPreviousWeekCost = Array.from(previousWeekCostMap.values()).reduce(
 		(sum, cost) => sum + cost,
