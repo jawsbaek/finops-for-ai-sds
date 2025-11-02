@@ -22,6 +22,40 @@ DROP INDEX "public"."api_keys_team_id_idx";
 -- DropIndex
 DROP INDEX "public"."cost_data_team_id_date_idx";
 
+-- Data Migration: Delete all existing API keys (Breaking Change - users must re-register)
+-- This ensures api_keys table is empty before adding NOT NULL project_id column
+DELETE FROM "api_keys";
+
+-- Data Migration: Backfill cost_data.project_id for rows where it's NULL
+-- Assign costs to the team's first project, or delete if team has no projects
+DO $$
+DECLARE
+    cost_record RECORD;
+    first_project_id TEXT;
+BEGIN
+    -- For each cost_data row with NULL project_id
+    FOR cost_record IN
+        SELECT id, team_id FROM cost_data WHERE project_id IS NULL
+    LOOP
+        -- Find the first project for this team
+        SELECT id INTO first_project_id
+        FROM projects
+        WHERE team_id = cost_record.team_id
+        LIMIT 1;
+
+        IF first_project_id IS NOT NULL THEN
+            -- Assign to first project
+            UPDATE cost_data
+            SET project_id = first_project_id
+            WHERE id = cost_record.id;
+        ELSE
+            -- No projects for this team, delete the cost record
+            -- (Alternative: create a default project, but deletion is safer for data integrity)
+            DELETE FROM cost_data WHERE id = cost_record.id;
+        END IF;
+    END LOOP;
+END $$;
+
 -- AlterTable
 ALTER TABLE "api_keys" DROP COLUMN "team_id",
 ADD COLUMN     "project_id" TEXT NOT NULL;
