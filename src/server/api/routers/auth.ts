@@ -36,24 +36,46 @@ export const authRouter = createTRPCRouter({
 			// Hash password
 			const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-			// Create user
+			// Create user with default team
+			// Fix: Automatically create a personal team for new users
+			// This ensures users can immediately create projects
 			const user = await ctx.db.user.create({
 				data: {
 					email,
 					passwordHash,
 					name,
+					teamMemberships: {
+						create: {
+							role: "owner",
+							team: {
+								create: {
+									name: `${name || email.split("@")[0]}'s Team`,
+								},
+							},
+						},
+					},
 				},
 				select: {
 					id: true,
 					email: true,
 					name: true,
 					createdAt: true,
+					teamMemberships: {
+						include: {
+							team: true,
+						},
+					},
 				},
 			});
 
 			return {
 				success: true,
-				user,
+				user: {
+					id: user.id,
+					email: user.email,
+					name: user.name,
+					createdAt: user.createdAt,
+				},
 			};
 		}),
 
