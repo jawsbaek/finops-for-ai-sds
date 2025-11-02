@@ -252,14 +252,95 @@ export const teamRouter = createTRPCRouter({
 				});
 			}
 
-			// Update team
-			const team = await db.team.update({
+			// Check if ownership is being transferred
+			const currentTeam = await db.team.findUnique({
 				where: { id: input.teamId },
-				data: {
-					...(input.name && { name: input.name }),
-					...(input.ownerId && { ownerId: input.ownerId }),
-					...(input.budget !== undefined && { budget: input.budget }),
-				},
+				select: { ownerId: true },
+			});
+
+			if (!currentTeam) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Team not found",
+				});
+			}
+
+			const isOwnershipTransfer =
+				input.ownerId && input.ownerId !== currentTeam.ownerId;
+
+			// Update team with ownership transfer logic
+			const team = await db.$transaction(async (tx) => {
+				// Update team record
+				const updatedTeam = await tx.team.update({
+					where: { id: input.teamId },
+					data: {
+						...(input.name && { name: input.name }),
+						...(input.ownerId && { ownerId: input.ownerId }),
+						...(input.budget !== undefined && { budget: input.budget }),
+					},
+				});
+
+				// If ownership is being transferred, update team member roles
+				if (isOwnershipTransfer && input.ownerId && currentTeam.ownerId) {
+					// Demote current owner to admin
+					await tx.teamMember.update({
+						where: {
+							teamId_userId: {
+								teamId: input.teamId,
+								userId: currentTeam.ownerId,
+							},
+						},
+						data: {
+							role: "admin",
+						},
+					});
+
+					// Check if new owner is already a member
+					const newOwnerMembership = await tx.teamMember.findUnique({
+						where: {
+							teamId_userId: {
+								teamId: input.teamId,
+								userId: input.ownerId,
+							},
+						},
+					});
+
+					if (newOwnerMembership) {
+						// Promote existing member to owner
+						await tx.teamMember.update({
+							where: {
+								teamId_userId: {
+									teamId: input.teamId,
+									userId: input.ownerId,
+								},
+							},
+							data: {
+								role: "owner",
+							},
+						});
+					} else {
+						// Add new owner as team member
+						await tx.teamMember.create({
+							data: {
+								teamId: input.teamId,
+								userId: input.ownerId,
+								role: "owner",
+							},
+						});
+					}
+
+					logger.info(
+						{
+							teamId: input.teamId,
+							previousOwnerId: currentTeam.ownerId,
+							newOwnerId: input.ownerId,
+							userId,
+						},
+						"Team ownership transferred successfully",
+					);
+				}
+
+				return updatedTeam;
 			});
 
 			logger.info(
