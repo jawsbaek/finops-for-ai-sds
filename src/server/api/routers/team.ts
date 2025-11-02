@@ -14,7 +14,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logger } from "~/lib/logger";
-import { logApiKeyDisable } from "~/lib/services/audit/audit-logger";
 import {
 	decryptApiKey,
 	generateEncryptedApiKey,
@@ -28,12 +27,13 @@ export const teamRouter = createTRPCRouter({
 	 * Create a new team
 	 *
 	 * Creates a team and automatically adds the creator as the first member with 'owner' role
+	 * The creator is always set as the team owner to ensure consistency between
+	 * Team.ownerId and TeamMember.role
 	 */
 	create: protectedProcedure
 		.input(
 			z.object({
 				name: z.string().min(1, "Team name is required"),
-				ownerId: z.string().optional(),
 				budget: z.number().positive().optional(),
 			}),
 		)
@@ -45,7 +45,7 @@ export const teamRouter = createTRPCRouter({
 				const newTeam = await tx.team.create({
 					data: {
 						name: input.name,
-						ownerId: input.ownerId ?? userId,
+						ownerId: userId,
 						budget: input.budget,
 					},
 				});
@@ -210,8 +210,8 @@ export const teamRouter = createTRPCRouter({
 					id: key.id,
 					provider: key.provider,
 					isActive: key.isActive,
-					// Mask the encrypted key - show only last 4 chars
-					maskedKey: `****${key.encryptedKey.slice(-4)}`,
+					// Mask the encrypted key - use generic placeholder to avoid exposing encryption patterns
+					maskedKey: "sk-••••••••••••••••••••",
 					createdAt: key.createdAt,
 					updatedAt: key.updatedAt,
 				})),
@@ -267,6 +267,21 @@ export const teamRouter = createTRPCRouter({
 
 			const isOwnershipTransfer =
 				input.ownerId && input.ownerId !== currentTeam.ownerId;
+
+			// Validate new owner exists if transferring ownership
+			if (isOwnershipTransfer && input.ownerId) {
+				const newOwner = await db.user.findUnique({
+					where: { id: input.ownerId },
+					select: { id: true },
+				});
+
+				if (!newOwner) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "New owner user does not exist",
+					});
+				}
+			}
 
 			// Update team with ownership transfer logic
 			const team = await db.$transaction(async (tx) => {
@@ -404,36 +419,39 @@ export const teamRouter = createTRPCRouter({
 				});
 			}
 
-			// Check if team already has an active API key for this provider
-			const existingKey = await db.apiKey.findFirst({
-				where: {
-					teamId: input.teamId,
-					provider: input.provider,
-					isActive: true,
-				},
-			});
-
-			if (existingKey) {
-				throw new TRPCError({
-					code: "CONFLICT",
-					message:
-						"Team already has an active API key for this provider. Please disable the existing key first.",
-				});
-			}
-
-			// Encrypt the API key using KMS envelope encryption
+			// Encrypt the API key using KMS envelope encryption (before transaction)
 			const encrypted = await generateEncryptedApiKey(input.apiKey);
 
-			// Store encrypted key in database
-			const apiKey = await db.apiKey.create({
-				data: {
-					teamId: input.teamId,
-					provider: input.provider,
-					encryptedKey: encrypted.ciphertext,
-					encryptedDataKey: encrypted.encryptedDataKey,
-					iv: encrypted.iv,
-					isActive: true,
-				},
+			// Check for existing key and create new one in transaction to prevent race condition
+			const apiKey = await db.$transaction(async (tx) => {
+				// Check if team already has an active API key for this provider
+				const existingKey = await tx.apiKey.findFirst({
+					where: {
+						teamId: input.teamId,
+						provider: input.provider,
+						isActive: true,
+					},
+				});
+
+				if (existingKey) {
+					throw new TRPCError({
+						code: "CONFLICT",
+						message:
+							"Team already has an active API key for this provider. Please disable the existing key first.",
+					});
+				}
+
+				// Store encrypted key in database
+				return await tx.apiKey.create({
+					data: {
+						teamId: input.teamId,
+						provider: input.provider,
+						encryptedKey: encrypted.ciphertext,
+						encryptedDataKey: encrypted.encryptedDataKey,
+						iv: encrypted.iv,
+						isActive: true,
+					},
+				});
 			});
 
 			logger.info(
@@ -498,7 +516,7 @@ export const teamRouter = createTRPCRouter({
 				id: key.id,
 				provider: key.provider,
 				isActive: key.isActive,
-				maskedKey: `****${key.encryptedKey.slice(-4)}`,
+				maskedKey: "sk-••••••••••••••••••••",
 				createdAt: key.createdAt,
 				updatedAt: key.updatedAt,
 			}));
@@ -562,20 +580,30 @@ export const teamRouter = createTRPCRouter({
 				isActive: apiKey.isActive,
 			};
 
-			// Disable the API key
-			await db.apiKey.update({
-				where: { id: input.apiKeyId },
-				data: {
-					isActive: false,
-				},
-			});
+			// Disable API key and create audit log in transaction
+			await db.$transaction(async (tx) => {
+				// Disable the API key
+				await tx.apiKey.update({
+					where: { id: input.apiKeyId },
+					data: {
+						isActive: false,
+					},
+				});
 
-			// Create audit log
-			await logApiKeyDisable({
-				userId,
-				apiKeyId: input.apiKeyId,
-				reason: input.reason,
-				previousState,
+				// Create audit log
+				await tx.auditLog.create({
+					data: {
+						userId,
+						actionType: "api_key_disabled",
+						resourceType: "api_key",
+						resourceId: input.apiKeyId,
+						metadata: {
+							reason: input.reason,
+							previousState,
+							teamId: apiKey.teamId,
+						},
+					},
+				});
 			});
 
 			logger.info(
