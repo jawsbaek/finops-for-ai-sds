@@ -419,7 +419,7 @@ export const teamRouter = createTRPCRouter({
 	/**
 	 * Generate and store an encrypted API key for the team
 	 *
-	 * Enforces constraint: Each team can have only one active API key per provider
+	 * Teams can have multiple API keys per provider
 	 * Uses KMS envelope encryption to securely store the API key
 	 */
 	generateApiKey: protectedProcedure
@@ -463,23 +463,6 @@ export const teamRouter = createTRPCRouter({
 					throw new TRPCError({
 						code: "FORBIDDEN",
 						message: "Only team owners can generate API keys",
-					});
-				}
-
-				// 2. Check if team already has an active API key for this provider
-				const existingKey = await tx.apiKey.findFirst({
-					where: {
-						teamId: input.teamId,
-						provider: input.provider,
-						isActive: true,
-					},
-				});
-
-				if (existingKey) {
-					throw new TRPCError({
-						code: "CONFLICT",
-						message:
-							"Team already has an active API key for this provider. Please disable the existing key first.",
 					});
 				}
 

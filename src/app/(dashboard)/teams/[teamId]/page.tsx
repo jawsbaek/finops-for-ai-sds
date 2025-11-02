@@ -13,6 +13,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import {
 	AlertTriangle,
@@ -36,9 +43,12 @@ export default function TeamDetailPage() {
 
 	const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false);
 	const [disableDialogOpen, setDisableDialogOpen] = useState(false);
+	const [inviteMemberDialogOpen, setInviteMemberDialogOpen] = useState(false);
 	const [apiKeyInput, setApiKeyInput] = useState("");
 	const [disableReason, setDisableReason] = useState("");
 	const [selectedApiKeyId, setSelectedApiKeyId] = useState<string | null>(null);
+	const [inviteEmail, setInviteEmail] = useState("");
+	const [inviteRole, setInviteRole] = useState<"member" | "admin">("member");
 
 	// Fetch team data
 	const { data: team, isLoading } = api.team.getById.useQuery({ teamId });
@@ -77,6 +87,22 @@ export default function TeamDetailPage() {
 		},
 	});
 
+	// Add member mutation
+	const addMember = api.team.addMember.useMutation({
+		onSuccess: () => {
+			toast.success("멤버가 초대되었습니다");
+			setInviteMemberDialogOpen(false);
+			setInviteEmail("");
+			setInviteRole("member");
+			void utils.team.getById.invalidate({ teamId });
+		},
+		onError: (error) => {
+			toast.error("멤버 초대 실패", {
+				description: error.message,
+			});
+		},
+	});
+
 	const handleGenerateApiKey = () => {
 		if (!apiKeyInput.trim()) {
 			toast.error("API 키를 입력해주세요");
@@ -101,6 +127,19 @@ export default function TeamDetailPage() {
 		disableApiKey.mutate({
 			apiKeyId: selectedApiKeyId,
 			reason: disableReason.trim(),
+		});
+	};
+
+	const handleInviteMember = () => {
+		if (!inviteEmail.trim()) {
+			toast.error("이메일을 입력해주세요");
+			return;
+		}
+
+		addMember.mutate({
+			teamId,
+			email: inviteEmail.trim(),
+			role: inviteRole,
 		});
 	};
 
@@ -190,7 +229,17 @@ export default function TeamDetailPage() {
 
 					{/* Team Members */}
 					<div>
-						<h3 className="mb-3 font-semibold">팀 멤버</h3>
+						<div className="mb-3 flex items-center justify-between">
+							<h3 className="font-semibold">팀 멤버</h3>
+							<Button
+								size="sm"
+								variant="outline"
+								onClick={() => setInviteMemberDialogOpen(true)}
+							>
+								<Plus className="mr-2 h-4 w-4" />
+								멤버 초대
+							</Button>
+						</div>
 						<div className="space-y-2">
 							{team.members.map((member) => (
 								<div
@@ -229,7 +278,7 @@ export default function TeamDetailPage() {
 						</CardTitle>
 						<Dialog open={apiKeyDialogOpen} onOpenChange={setApiKeyDialogOpen}>
 							<DialogTrigger asChild>
-								<Button size="sm" disabled={team.apiKeys.length > 0}>
+								<Button size="sm">
 									<Plus className="mr-2 h-4 w-4" />
 									API 키 추가
 								</Button>
@@ -262,8 +311,9 @@ export default function TeamDetailPage() {
 										<p className="flex items-start gap-2 text-sm text-warning">
 											<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
 											<span>
-												팀당 하나의 API 키만 등록할 수 있습니다. 비용 데이터는
-												이 API 키를 기준으로 자동 수집됩니다.
+												비용 데이터는 등록된 모든 API 키를 기준으로 자동
+												수집됩니다. 복수의 API 키 등록 시 각각의 비용이
+												합산됩니다.
 											</span>
 										</p>
 									</div>
@@ -404,6 +454,84 @@ export default function TeamDetailPage() {
 								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
 							)}
 							비활성화
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Invite Member Dialog */}
+			<Dialog
+				open={inviteMemberDialogOpen}
+				onOpenChange={setInviteMemberDialogOpen}
+			>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>팀 멤버 초대</DialogTitle>
+						<DialogDescription>
+							초대할 멤버의 이메일과 역할을 입력하세요. 멤버는 팀의 프로젝트에
+							접근할 수 있습니다.
+						</DialogDescription>
+					</DialogHeader>
+					<div className="grid gap-4 py-4">
+						<div className="grid gap-2">
+							<Label htmlFor="inviteEmail">
+								이메일 <span className="text-destructive">*</span>
+							</Label>
+							<Input
+								id="inviteEmail"
+								type="email"
+								placeholder="member@example.com"
+								value={inviteEmail}
+								onChange={(e) => setInviteEmail(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") {
+										e.preventDefault();
+										handleInviteMember();
+									}
+								}}
+							/>
+						</div>
+						<div className="grid gap-2">
+							<Label htmlFor="inviteRole">역할</Label>
+							<Select
+								value={inviteRole}
+								onValueChange={(value: "member" | "admin") =>
+									setInviteRole(value)
+								}
+							>
+								<SelectTrigger>
+									<SelectValue placeholder="역할 선택" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="member">멤버</SelectItem>
+									<SelectItem value="admin">관리자</SelectItem>
+								</SelectContent>
+							</Select>
+							<p className="text-muted-foreground text-xs">
+								관리자는 팀 설정을 변경하고 멤버를 관리할 수 있습니다.
+							</p>
+						</div>
+					</div>
+					<DialogFooter>
+						<Button
+							variant="outline"
+							onClick={() => {
+								setInviteMemberDialogOpen(false);
+								setInviteEmail("");
+								setInviteRole("member");
+							}}
+							disabled={addMember.isPending}
+						>
+							취소
+						</Button>
+						<Button
+							onClick={handleInviteMember}
+							disabled={addMember.isPending || !inviteEmail.trim()}
+						>
+							{addMember.isPending && (
+								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							)}
+							초대
 						</Button>
 					</DialogFooter>
 				</DialogContent>
