@@ -1,135 +1,281 @@
+"use client";
+
 import { StatCard } from "@/components/custom";
-import { Clock, DollarSign, TrendingUp } from "lucide-react";
-import type { Metadata } from "next";
-import { formatChange, formatCurrency, getTrend } from "~/lib/utils/format";
-import { HydrateClient, api } from "~/trpc/server";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Clock, DollarSign, TrendingUp, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+	Bar,
+	BarChart,
+	CartesianGrid,
+	Cell,
+	ResponsiveContainer,
+	Tooltip,
+	XAxis,
+	YAxis,
+} from "recharts";
+import { api } from "~/trpc/react";
 
-export const metadata: Metadata = {
-	title: "대시보드",
-	description: "AI 인프라 비용 추적 및 분석 대시보드",
-};
+export default function DashboardPage() {
+	const router = useRouter();
 
-export default async function DashboardPage() {
-	// Fetch cost summary data on the server
-	const costSummary = await api.cost.getSummary({});
+	// Fetch cost summary data
+	const { data: costSummary, isLoading } = api.cost.getSummary.useQuery({});
+
+	// Fetch team costs top 5
+	const { data: teamCosts, isLoading: isLoadingTeamCosts } =
+		api.cost.getTeamCostsTopN.useQuery({
+			limit: 5,
+			days: 7,
+		});
+
+	// Format currency
+	const formatCurrency = (amount: number) => {
+		return new Intl.NumberFormat("ko-KR", {
+			style: "currency",
+			currency: "USD",
+		}).format(amount);
+	};
+
+	// Format change percentage
+	const formatChange = (change: number) => {
+		const sign = change > 0 ? "+" : "";
+		return `${sign}${change.toFixed(1)}%`;
+	};
+
+	// Determine trend direction
+	const getTrend = (change: number): "up" | "down" | "neutral" => {
+		if (change > 0) return "up";
+		if (change < 0) return "down";
+		return "neutral";
+	};
 
 	return (
-		<HydrateClient>
-			<div className="space-y-6">
-				<div>
-					<h2 className="font-bold text-2xl text-foreground">
-						Welcome to FinOps for AI
-					</h2>
-					<p className="mt-2 text-muted-foreground text-sm">
-						Track and optimize your AI infrastructure costs
-					</p>
+		<div className="space-y-6">
+			<div>
+				<h2 className="font-bold text-2xl text-foreground">
+					Welcome to FinOps for AI
+				</h2>
+				<p className="mt-2 text-muted-foreground text-sm">
+					Track and optimize your AI infrastructure costs
+				</p>
+			</div>
+
+			{/* Cost Summary Cards */}
+			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+				<StatCard
+					label="어제 총 비용"
+					value={formatCurrency(costSummary?.yesterdayCost ?? 0)}
+					icon={<DollarSign className="h-5 w-5" />}
+					variant="primary"
+					loading={isLoading}
+				/>
+
+				<StatCard
+					label="이번 주 총 비용"
+					value={formatCurrency(costSummary?.thisWeekCost ?? 0)}
+					change={
+						costSummary?.weeklyChange !== undefined &&
+						costSummary?.weeklyChange !== 0
+							? formatChange(costSummary.weeklyChange)
+							: undefined
+					}
+					trend={
+						costSummary?.weeklyChange !== undefined
+							? getTrend(costSummary.weeklyChange)
+							: "neutral"
+					}
+					icon={<TrendingUp className="h-5 w-5" />}
+					variant="primary"
+					loading={isLoading}
+				/>
+
+				<StatCard
+					label="데이터 업데이트 지연"
+					value="8-24시간"
+					icon={<Clock className="h-5 w-5" />}
+					variant="warning"
+				/>
+			</div>
+
+			{/* Data Status Info */}
+			{!isLoading && costSummary && (
+				<div className="rounded-lg border border-info/30 bg-info/10 p-4">
+					<div className="flex">
+						<div className="flex-shrink-0">
+							<svg
+								className="h-5 w-5 text-info"
+								viewBox="0 0 20 20"
+								fill="currentColor"
+							>
+								<title>Info</title>
+								<path
+									fillRule="evenodd"
+									d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+									clipRule="evenodd"
+								/>
+							</svg>
+						</div>
+						<div className="ml-3 flex-1">
+							<p className="text-info-foreground text-sm">
+								<strong>Note:</strong> OpenAI API usage data is delayed by 8-24
+								hours. The cost shown here reflects usage from 1-2 days ago, not
+								real-time usage.
+							</p>
+						</div>
+					</div>
 				</div>
+			)}
 
-				{/* Cost Summary Cards */}
-				<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-					<StatCard
-						label="어제 총 비용"
-						value={formatCurrency(costSummary?.yesterdayCost ?? 0)}
-						icon={<DollarSign className="h-5 w-5" />}
-						variant="primary"
-					/>
-
-					<StatCard
-						label="이번 주 총 비용"
-						value={formatCurrency(costSummary?.thisWeekCost ?? 0)}
-						change={
-							costSummary?.weeklyChange !== undefined &&
-							costSummary?.weeklyChange !== 0
-								? formatChange(costSummary.weeklyChange)
-								: undefined
-						}
-						trend={
-							costSummary?.weeklyChange !== undefined
-								? getTrend(costSummary.weeklyChange)
-								: "neutral"
-						}
-						icon={<TrendingUp className="h-5 w-5" />}
-						variant="primary"
-					/>
-
-					<StatCard
-						label="데이터 업데이트 지연"
-						value="8-24시간"
-						icon={<Clock className="h-5 w-5" />}
-						variant="warning"
-					/>
-				</div>
-
-				{/* Data Status Info */}
-				{costSummary && (
-					<div
-						className="rounded-lg border border-info/30 bg-info/10 p-4"
-						aria-label="데이터 상태 정보"
-					>
-						<div className="flex">
-							<div className="flex-shrink-0">
-								<svg
-									className="h-5 w-5 text-info"
-									viewBox="0 0 20 20"
-									fill="currentColor"
-									role="img"
-									aria-label="정보 아이콘"
+			{/* Team Costs Top 5 Chart */}
+			{!isLoadingTeamCosts && teamCosts && teamCosts.length > 0 && (
+				<Card>
+					<CardHeader>
+						<CardTitle className="flex items-center gap-2">
+							<Users className="h-5 w-5 text-primary" />
+							팀별 비용 Top 5 (최근 7일)
+						</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<div className="h-[300px]">
+							<ResponsiveContainer width="100%" height="100%">
+								<BarChart
+									data={teamCosts}
+									onClick={(data: unknown) => {
+										if (
+											typeof data === "object" &&
+											data !== null &&
+											"activePayload" in data &&
+											Array.isArray(data.activePayload) &&
+											data.activePayload[0]?.payload?.teamId
+										) {
+											const teamId = data.activePayload[0].payload
+												.teamId as string;
+											router.push(`/teams/${teamId}`);
+										}
+									}}
 								>
-									<path
-										fillRule="evenodd"
-										d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-										clipRule="evenodd"
+									<CartesianGrid
+										strokeDasharray="3 3"
+										className="stroke-muted"
 									/>
-								</svg>
-							</div>
-							<div className="ml-3 flex-1">
-								<p className="text-info-foreground text-sm">
-									<strong>Note:</strong> OpenAI API usage data is delayed by
-									8-24 hours. The cost shown here reflects usage from 1-2 days
-									ago, not real-time usage.
-								</p>
-							</div>
+									<XAxis
+										dataKey="teamName"
+										className="text-sm"
+										tick={{ fill: "hsl(var(--muted-foreground))" }}
+									/>
+									<YAxis
+										className="text-sm"
+										tick={{ fill: "hsl(var(--muted-foreground))" }}
+										tickFormatter={(value: number) => `$${value.toFixed(2)}`}
+									/>
+									<Tooltip
+										contentStyle={{
+											backgroundColor: "hsl(var(--card))",
+											border: "1px solid hsl(var(--border))",
+											borderRadius: "8px",
+										}}
+										labelStyle={{ color: "hsl(var(--foreground))" }}
+										formatter={(value: number, name: string) => [
+											formatCurrency(value),
+											name === "totalCost" ? "총 비용" : name,
+										]}
+									/>
+									<Bar
+										dataKey="totalCost"
+										fill="hsl(var(--primary))"
+										radius={[8, 8, 0, 0]}
+										cursor="pointer"
+									>
+										{teamCosts.map((entry, index) => {
+											return (
+												<Cell
+													key={`cell-${index}`}
+													fill={`hsl(var(--primary) / ${1 - index * 0.15})`}
+												/>
+											);
+										})}
+									</Bar>
+								</BarChart>
+							</ResponsiveContainer>
+						</div>
+						<div className="mt-4 grid gap-2">
+							{teamCosts.map((team, index) => {
+								return (
+									<div
+										key={team.teamId}
+										className="flex cursor-pointer items-center justify-between rounded-lg border p-3 transition-colors hover:bg-accent"
+										onClick={() => router.push(`/teams/${team.teamId}`)}
+										onKeyDown={(e) => {
+											if (e.key === "Enter" || e.key === " ") {
+												e.preventDefault();
+												router.push(`/teams/${team.teamId}`);
+											}
+										}}
+										role="button"
+										tabIndex={0}
+									>
+										<div className="flex items-center gap-3">
+											<div
+												className="h-8 w-1 rounded-full"
+												style={{
+													backgroundColor: `hsl(var(--primary) / ${1 - index * 0.15})`,
+												}}
+											/>
+											<span className="font-medium">{team.teamName}</span>
+										</div>
+										<div className="text-right">
+											<div className="font-semibold">
+												{formatCurrency(team.totalCost)}
+											</div>
+											{team.budget && (
+												<div className="text-muted-foreground text-xs">
+													예산: {formatCurrency(team.budget)}
+												</div>
+											)}
+										</div>
+									</div>
+								);
+							})}
+						</div>
+					</CardContent>
+				</Card>
+			)}
+
+			{/* Empty State (when no data) */}
+			{!isLoading &&
+				costSummary?.yesterdayCost === 0 &&
+				costSummary?.thisWeekCost === 0 && (
+					<div className="rounded-lg border-2 border-border border-dashed p-12">
+						<div className="text-center">
+							<svg
+								className="mx-auto h-12 w-12 text-muted-foreground"
+								fill="none"
+								viewBox="0 0 24 24"
+								stroke="currentColor"
+								aria-hidden="true"
+							>
+								<title>No Data</title>
+								<path
+									strokeLinecap="round"
+									strokeLinejoin="round"
+									strokeWidth={2}
+									d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+								/>
+							</svg>
+							<h3 className="mt-2 font-semibold text-foreground text-sm">
+								No cost data yet
+							</h3>
+							<p className="mt-1 text-muted-foreground text-sm">
+								비용 데이터가 아직 없습니다. API 키를 설정하고 비용 수집을
+								기다리세요.
+							</p>
+							<p className="mt-2 text-muted-foreground/70 text-xs">
+								Data collection runs daily at 9am KST
+							</p>
 						</div>
 					</div>
 				)}
-
-				{/* Empty State (when no data) */}
-				{costSummary?.yesterdayCost === 0 &&
-					costSummary?.thisWeekCost === 0 && (
-						<div
-							className="rounded-lg border-2 border-border border-dashed p-12"
-							aria-label="데이터 없음"
-						>
-							<div className="text-center">
-								<svg
-									className="mx-auto h-12 w-12 text-muted-foreground"
-									fill="none"
-									viewBox="0 0 24 24"
-									stroke="currentColor"
-									role="img"
-									aria-label="데이터 없음 아이콘"
-								>
-									<path
-										strokeLinecap="round"
-										strokeLinejoin="round"
-										strokeWidth={2}
-										d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-									/>
-								</svg>
-								<h3 className="mt-2 font-semibold text-foreground text-sm">
-									No cost data yet
-								</h3>
-								<p className="mt-1 text-muted-foreground text-sm">
-									비용 데이터가 아직 없습니다. API 키를 설정하고 비용 수집을
-									기다리세요.
-								</p>
-								<p className="mt-2 text-muted-foreground/70 text-xs">
-									Data collection runs daily at 9am KST
-								</p>
-							</div>
-						</div>
-					)}
-			</div>
-		</HydrateClient>
+		</div>
 	);
 }

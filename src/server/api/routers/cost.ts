@@ -281,6 +281,85 @@ export const costRouter = createTRPCRouter({
 		}),
 
 	/**
+	 * Get top N teams by cost
+	 *
+	 * Returns top teams ordered by total cost for the specified time period
+	 * Useful for dashboard charts showing team cost breakdown
+	 */
+	getTeamCostsTopN: protectedProcedure
+		.input(
+			z.object({
+				limit: z.number().min(1).max(20).default(5),
+				days: z.number().min(1).max(90).default(7),
+			}),
+		)
+		.query(async ({ ctx, input }) => {
+			const userId = ctx.session.user.id;
+
+			// Get user's teams
+			const userTeams = await db.teamMember.findMany({
+				where: { userId },
+				select: { teamId: true },
+			});
+
+			const teamIds = userTeams.map((tm) => tm.teamId);
+
+			if (teamIds.length === 0) {
+				return [];
+			}
+
+			const startDate = subDays(new Date(), input.days);
+
+			// Aggregate costs by team
+			const costsByTeam = await db.costData.groupBy({
+				by: ["teamId"],
+				where: {
+					teamId: { in: teamIds },
+					date: {
+						gte: startDate,
+					},
+				},
+				_sum: {
+					cost: true,
+				},
+				_count: {
+					id: true,
+				},
+			});
+
+			// Fetch team details
+			const teams = await db.team.findMany({
+				where: {
+					id: { in: costsByTeam.map((c) => c.teamId) },
+				},
+				select: {
+					id: true,
+					name: true,
+					budget: true,
+				},
+			});
+
+			const teamMap = new Map(teams.map((t) => [t.id, t]));
+
+			// Combine and sort by total cost (descending)
+			const results = costsByTeam
+				.map((cost) => {
+					const team = teamMap.get(cost.teamId);
+					return {
+						teamId: cost.teamId,
+						teamName: team?.name ?? "Unknown",
+						totalCost: cost._sum.cost?.toNumber() ?? 0,
+						budget: team?.budget?.toNumber(),
+						recordCount: cost._count.id,
+					};
+				})
+				.sort((a, b) => b.totalCost - a.totalCost)
+				.slice(0, input.limit);
+
+			return results;
+		}),
+
+	/**
 	 * Disable API Key
 	 *
 	 * Immediately disables an API key to prevent further cost accumulation

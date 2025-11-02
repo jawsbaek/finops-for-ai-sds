@@ -1,0 +1,282 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>7</storyId>
+    <title>팀별 API 키 생성 및 자동 귀속</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-02</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-7-팀별-api-키-생성-및-자동-귀속.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>시스템 관리자</asA>
+    <iWant>팀별로 별도의 OpenAI API 키를 생성하고 관리하여</iWant>
+    <soThat>태그 없이도 비용이 자동으로 팀에 귀속되도록 할 수 있다</soThat>
+    <tasks>
+- Task 1: Team 데이터 모델 구현 (AC: #1)
+  - Prisma schema에 Team, TeamMember 모델 추가 (이미 존재하는 경우 확인)
+  - 팀 예산 필드 추가 (budget: Decimal)
+  - 담당자 필드 (owner_id: String, FK to User)
+  - Migration 생성 및 실행
+
+- Task 2: Team tRPC Router 구현 (AC: #1, #2, #5)
+  - src/server/api/routers/team.ts 생성 또는 확장
+  - team.create 프로시저 (팀 생성 + 기본 멤버 추가)
+  - team.getAll 프로시저 (사용자 소속 팀 목록)
+  - team.getById 프로시저 (팀 상세 정보 + API 키 목록)
+  - team.update 프로시저 (팀 정보 수정)
+  - team.generateApiKey 프로시저 (OpenAI API 키 생성, KMS 암호화)
+  - team.listApiKeys 프로시저 (팀의 API 키 목록 조회)
+  - team.disableApiKey 프로시저 (API 키 비활성화, audit log)
+
+- Task 3: API Key Manager Service 구현 (AC: #2)
+  - src/lib/services/encryption/api-key-manager.ts 생성 또는 확장
+  - generateEncryptedApiKey 함수 (KMS envelope encryption)
+  - decryptApiKey 함수 (KMS envelope decryption)
+  - validateApiKey 함수 (형식 검증)
+  - OpenAI API 키 포맷 검증 (sk-proj-* 또는 sk-*)
+
+- Task 4: 팀 관리 페이지 UI 구현 (AC: #1, #5)
+  - src/app/(dashboard)/teams/page.tsx 생성
+  - 팀 목록 카드 표시 (팀명, 멤버 수, 총 비용)
+  - "새 팀 생성" 버튼 및 모달
+  - 팀 생성 폼 (팀명, 담당자 선택, 예산 설정)
+  - 팀 상세 페이지 (teams/[teamId]/page.tsx)
+  - API 키 관리 섹션 (생성, 조회, 복사, 비활성화)
+  - API 키 표시: 마스킹 (sk-proj-****...****)
+  - "API 키 생성" 버튼 (OpenAI API 키 입력 폼)
+  - API 키 비활성화 확인 모달
+
+- Task 5: 비용 데이터 자동 귀속 로직 구현 (AC: #3)
+  - src/app/api/cron/daily-batch/route.ts 수정
+  - API 키별 팀 조회 로직 추가
+  - CostData 저장 시 team_id 자동 설정
+  - 이미 구현된 경우 동작 확인 및 테스트
+
+- Task 6: 홈 화면 "팀별 비용 Top 5" 차트 추가 (AC: #4)
+  - src/app/(dashboard)/page.tsx 수정
+  - tRPC cost.getTeamCostsTopN 프로시저 생성 (최근 7일 팀별 비용)
+  - Recharts BarChart 컴포넌트 추가
+  - 팀명, 총 비용, 전주 대비 증감률 표시
+  - 차트 클릭 시 팀 상세 페이지로 이동
+
+- Task 7: 통합 테스트 및 검증
+  - 팀 생성 → API 키 생성 → 비용 데이터 수집 → 팀별 비용 표시 E2E 테스트
+  - API 키 비활성화 시 비용 수집 차단 확인
+  - 홈 화면 팀별 비용 차트 표시 확인
+  - TypeScript type checking passed
+  - Production build successful
+</tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. 시스템은 "팀" 엔티티를 생성할 수 있어야 한다 (팀명, 담당자, 예산) (FR007)
+2. 각 팀에 대해 고유한 OpenAI API 키를 생성하고 관리할 수 있어야 한다 (FR007)
+3. 비용 데이터 수집 시 API 키를 기준으로 팀을 자동 식별해야 한다
+4. 홈 화면에 "팀별 비용 Top 5" 차트가 표시되어야 한다
+5. 팀 관리 페이지에서 API 키 생성, 조회, 비활성화를 할 수 있어야 한다
+</acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR007: 아키텍처 기반 귀속</section>
+        <snippet>시스템은 팀별로 별도의 OpenAI API 키를 생성하고 관리할 수 있어야 한다 (태그 없이 자동 귀속)</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Novel Pattern 2: 아키텍처 기반 귀속</section>
+        <snippet>태그 대신 API 키 격리로 팀별 비용 자동 귀속. 팀당 1개의 OpenAI API 키 사용하여 API 키를 기준으로 비용 데이터 자동 식별.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Project Structure</section>
+        <snippet>Team Router: src/server/api/routers/team.ts, API Key Manager: src/lib/services/encryption/api-key-manager.ts, Team Management UI: src/app/(dashboard)/teams/</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-1.md</path>
+        <title>Epic 1 Technical Specification</title>
+        <section>Data Models - Team</section>
+        <snippet>Team 모델: id, name, createdAt, updatedAt. Relations: members (TeamMember[]), apiKeys (ApiKey[]), costData (CostData[])</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-1.md</path>
+        <title>Epic 1 Technical Specification</title>
+        <section>API Key Manager Service</section>
+        <snippet>Inputs: Plain API Key, Team ID. Outputs: Encrypted Key Record (encrypted_key, encrypted_data_key, iv). Uses: AWS KMS Envelope Encryption (AES-256-GCM)</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-1.md</path>
+        <title>Epic 1 Technical Specification</title>
+        <section>Team tRPC Router</section>
+        <snippet>team.create, team.getAll, team.getById, team.update, team.generateApiKey, team.listApiKeys, team.disableApiKey 프로시저 구현</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Breakdown Document</title>
+        <section>Story 1.7: 팀별 API 키 생성 및 자동 귀속</section>
+        <snippet>팀 엔티티 생성 (팀명, 담당자, 예산), 고유한 OpenAI API 키 생성 및 관리, API 키 기준 팀 자동 식별, 팀별 비용 Top 5 차트</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>prisma/schema.prisma</path>
+        <kind>schema</kind>
+        <symbol>Team</symbol>
+        <lines>46-58</lines>
+        <reason>Team 모델 정의. owner_id, budget 필드 추가 필요 (AC #1)</reason>
+      </artifact>
+      <artifact>
+        <path>prisma/schema.prisma</path>
+        <kind>schema</kind>
+        <symbol>ApiKey</symbol>
+        <lines>104-121</lines>
+        <reason>API 키 모델 정의. KMS envelope encryption 필드 (encryptedKey, encryptedDataKey, iv) 이미 정의됨 (AC #2)</reason>
+      </artifact>
+      <artifact>
+        <path>prisma/schema.prisma</path>
+        <kind>schema</kind>
+        <symbol>CostData</symbol>
+        <lines>123-150</lines>
+        <reason>비용 데이터 모델. teamId, apiKeyId 필드로 팀 귀속 지원 (AC #3)</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/services/encryption/kms-envelope.ts</path>
+        <kind>service</kind>
+        <symbol>KMSEnvelopeEncryption</symbol>
+        <lines>30-173</lines>
+        <reason>KMS envelope encryption 서비스. Story 1.7에서 api-key-manager.ts가 이 클래스를 래핑하여 API 키 암호화 (AC #2)</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/services/audit/audit-logger.ts</path>
+        <kind>service</kind>
+        <symbol>logApiKeyDisable</symbol>
+        <lines>21-39</lines>
+        <reason>API 키 비활성화 audit log. team.disableApiKey 프로시저에서 사용 (AC #5)</reason>
+      </artifact>
+      <artifact>
+        <path>src/server/api/routers/cost.ts</path>
+        <kind>router</kind>
+        <symbol>costRouter</symbol>
+        <lines>18-100</lines>
+        <reason>비용 데이터 조회 router. getTeamCostsTopN 프로시저 추가 필요 (AC #4)</reason>
+      </artifact>
+      <artifact>
+        <path>src/app/(dashboard)/projects/page.tsx</path>
+        <kind>component</kind>
+        <symbol>ProjectsPage</symbol>
+        <lines></lines>
+        <reason>프로젝트 목록 페이지 패턴. teams/page.tsx 구현 시 참조 (AC #1, #5)</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package>@prisma/client</package>
+        <version>^6.5.0</version>
+      </node>
+      <node>
+        <package>@trpc/server</package>
+        <version>^11.0.0</version>
+      </node>
+      <node>
+        <package>@aws-sdk/client-kms</package>
+        <version>^3.922.0</version>
+      </node>
+      <node>
+        <package>zod</package>
+        <version>^3.24.2</version>
+      </node>
+      <node>
+        <package>recharts</package>
+        <version>^3.3.0</version>
+      </node>
+      <node>
+        <package>@radix-ui/react-dialog</package>
+        <version>^1.1.15</version>
+      </node>
+      <node>
+        <package>lucide-react</package>
+        <version>^0.552.0</version>
+      </node>
+      <node>
+        <package>next-auth</package>
+        <version>5.0.0-beta.25</version>
+      </node>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - Assumption 1: OpenAI API 키는 팀당 1개만 사용 (Novel Pattern 2 구현)
+    - UI에서 팀당 1개 API 키만 생성 가능하도록 강제
+    - 기존 API 키가 있으면 "이미 API 키가 존재합니다" 메시지 표시
+    - tRPC Protected Procedure 패턴: 모든 team router는 인증된 사용자만 접근
+    - KMS Envelope Encryption 필수: API 키는 절대 평문 저장 금지
+    - Prisma transactions: 팀 생성 시 기본 멤버 추가는 트랜잭션으로 처리
+    - Error handling: 모든 tRPC 프로시저에 try-catch 및 Sentry 로깅
+    - Audit logging: API 키 생성/비활성화 이벤트는 audit log 필수
+    - Design System: shadcn/ui 컴포넌트 사용, Premium Indigo 다크 모드 테마
+    - Serverless constraints: Vercel 함수 최대 실행 시간 5분
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>team.create</name>
+      <kind>tRPC mutation</kind>
+      <signature>input: z.object({ name: z.string(), ownerId: z.string().optional(), budget: z.number().optional() })</signature>
+      <path>src/server/api/routers/team.ts</path>
+    </interface>
+    <interface>
+      <name>team.generateApiKey</name>
+      <kind>tRPC mutation</kind>
+      <signature>input: z.object({ teamId: z.string(), provider: z.literal("openai"), apiKey: z.string() })</signature>
+      <path>src/server/api/routers/team.ts</path>
+    </interface>
+    <interface>
+      <name>team.disableApiKey</name>
+      <kind>tRPC mutation</kind>
+      <signature>input: z.object({ apiKeyId: z.string(), reason: z.string() })</signature>
+      <path>src/server/api/routers/team.ts</path>
+    </interface>
+    <interface>
+      <name>cost.getTeamCostsTopN</name>
+      <kind>tRPC query</kind>
+      <signature>input: z.object({ limit: z.number().default(5), days: z.number().default(7) })</signature>
+      <path>src/server/api/routers/cost.ts</path>
+    </interface>
+    <interface>
+      <name>KMSEnvelopeEncryption.encrypt</name>
+      <kind>class method</kind>
+      <signature>async encrypt(plaintext: string): Promise&lt;{ ciphertext: string; encryptedDataKey: string; iv: string }&gt;</signature>
+      <path>src/lib/services/encryption/kms-envelope.ts</path>
+    </interface>
+    <interface>
+      <name>KMSEnvelopeEncryption.decrypt</name>
+      <kind>class method</kind>
+      <signature>async decrypt(ciphertext: string, encryptedDataKey: string, iv: string): Promise&lt;string&gt;</signature>
+      <path>src/lib/services/encryption/kms-envelope.ts</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>Vitest for unit/integration tests. Playwright for E2E tests (not yet implemented). Testing pattern: arrange-act-assert with MSW for API mocking. All tRPC routers should have unit tests. All services should have unit tests with mocked dependencies. E2E tests verify complete user flows.</standards>
+    <locations>
+      - __tests__/unit/ - Unit tests
+      - __tests__/integration/ - Integration tests
+      - __tests__/e2e/ - Playwright E2E tests (future)
+      - src/lib/services/**/__tests__/ - Service-level tests
+    </locations>
+    <ideas>
+      - AC#1: Team CRUD unit tests (team.create, team.getAll, team.getById, team.update)
+      - AC#2: API key encryption/decryption tests (generateEncryptedApiKey, decryptApiKey, validateApiKey functions)
+      - AC#2: team.generateApiKey mutation test (팀당 1개 제약 검증)
+      - AC#3: 비용 데이터 자동 귀속 integration test (daily-batch 실행 후 team_id 자동 설정 확인)
+      - AC#4: cost.getTeamCostsTopN query test (Top 5 팀 비용 조회)
+      - AC#5: team.disableApiKey mutation test (audit log 생성 확인)
+      - E2E: 팀 생성 → API 키 생성 → 비용 데이터 수집 → 홈 화면 팀별 비용 표시
+      - E2E: API 키 비활성화 플로우 (확인 모달 → 비활성화 → audit log 확인)
+    </ideas>
+  </tests>
+</story-context>
