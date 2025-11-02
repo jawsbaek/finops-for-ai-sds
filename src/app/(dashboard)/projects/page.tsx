@@ -8,8 +8,8 @@ export const metadata: Metadata = {
 };
 
 // Next.js Cache Strategy
-// Revalidate every 60 seconds (ISR - Incremental Static Regeneration)
-export const revalidate = 60;
+// Force dynamic rendering for user-scoped data to prevent caching user-specific responses
+export const dynamic = "force-dynamic";
 
 export default async function ProjectsPage() {
 	// Fetch data on the server
