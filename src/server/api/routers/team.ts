@@ -547,15 +547,31 @@ export const teamRouter = createTRPCRouter({
 				});
 			}
 
-			// Remove member
-			await db.teamMember.delete({
-				where: {
-					teamId_userId: {
-						teamId: input.teamId,
-						userId: input.userId,
-					},
-				},
+			// Get all projects for this team
+			const teamProjects = await db.project.findMany({
+				where: { teamId: input.teamId },
+				select: { id: true },
 			});
+
+			// Remove member from team and all associated projects
+			await db.$transaction([
+				// Remove from all team projects
+				db.projectMember.deleteMany({
+					where: {
+						userId: input.userId,
+						projectId: { in: teamProjects.map((p) => p.id) },
+					},
+				}),
+				// Remove from team
+				db.teamMember.delete({
+					where: {
+						teamId_userId: {
+							teamId: input.teamId,
+							userId: input.userId,
+						},
+					},
+				}),
+			]);
 
 			logger.info(
 				{
