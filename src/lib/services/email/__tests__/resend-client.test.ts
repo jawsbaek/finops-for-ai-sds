@@ -148,16 +148,25 @@ describe("Resend Email Client", () => {
 
 			vi.useFakeTimers();
 
-			const promise = sendCostAlertEmail(mockParams);
+			// Use an async IIFE to handle the promise immediately
+			let caughtError: Error | undefined;
+			const testPromise = (async () => {
+				try {
+					await sendCostAlertEmail(mockParams);
+				} catch (error) {
+					caughtError = error as Error;
+				}
+			})();
 
 			// Fast-forward through retries
 			await vi.advanceTimersByTimeAsync(1000);
 			await vi.advanceTimersByTimeAsync(2000);
 
-			await expect(promise).rejects.toThrow(
-				"Resend API error: Invalid API key",
-			);
+			// Wait for completion
+			await testPromise;
 
+			expect(caughtError).toBeDefined();
+			expect(caughtError?.message).toBe("Resend API error: Invalid API key");
 			expect(mockEmailsSend).toHaveBeenCalledTimes(3);
 
 			vi.useRealTimers();
@@ -207,18 +216,24 @@ describe("Resend Email Client", () => {
 
 			vi.useFakeTimers({ now: 0 });
 
-			const promise = sendCostAlertEmail(mockParams);
+			// Use an async IIFE to handle the promise immediately
+			let error: Error | undefined;
+			const testPromise = (async () => {
+				try {
+					await sendCostAlertEmail(mockParams);
+				} catch (e) {
+					error = e as Error;
+				}
+			})();
 
 			// Fast-forward with exact timing
 			await vi.advanceTimersByTimeAsync(1000); // 1st retry
 			await vi.advanceTimersByTimeAsync(2000); // 2nd retry
 
-			try {
-				await promise;
-			} catch (e) {
-				// Expected to fail
-			}
+			// Wait for completion
+			await testPromise;
 
+			expect(error).toBeDefined();
 			expect(attemptTimestamps).toEqual([
 				0, // Initial attempt
 				1000, // 1st retry after 1s
@@ -292,13 +307,24 @@ describe("Resend Email Client", () => {
 
 			vi.useFakeTimers();
 
-			const promise = sendCostAlertEmail(mockParams);
+			// Use an async IIFE to handle the promise immediately
+			let caughtError: Error | undefined;
+			const testPromise = (async () => {
+				try {
+					await sendCostAlertEmail(mockParams);
+				} catch (error) {
+					caughtError = error as Error;
+				}
+			})();
 
 			await vi.advanceTimersByTimeAsync(1000);
 			await vi.advanceTimersByTimeAsync(2000);
 
-			await expect(promise).rejects.toThrow("Network error");
+			// Wait for completion
+			await testPromise;
 
+			expect(caughtError).toBeDefined();
+			expect(caughtError?.message).toBe("Network error");
 			expect(mockEmailsSend).toHaveBeenCalledTimes(3);
 
 			vi.useRealTimers();
@@ -314,16 +340,20 @@ describe("Resend Email Client", () => {
 
 			vi.useFakeTimers();
 
-			const promise = sendCostAlertEmail(mockParams);
+			// Use an async IIFE to handle the promise immediately
+			const testPromise = (async () => {
+				try {
+					await sendCostAlertEmail(mockParams);
+				} catch (e) {
+					// Expected
+				}
+			})();
 
 			await vi.advanceTimersByTimeAsync(1000);
 			await vi.advanceTimersByTimeAsync(2000);
 
-			try {
-				await promise;
-			} catch (e) {
-				// Expected
-			}
+			// Wait for completion
+			await testPromise;
 
 			expect(logger.error).toHaveBeenCalledWith(
 				{ error: "Resend API error: Persistent error" },

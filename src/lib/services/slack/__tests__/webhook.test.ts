@@ -167,22 +167,28 @@ describe("Slack Webhook Service", () => {
 
 			vi.useFakeTimers();
 
-			const promise = sendCostAlert(mockParams);
+			// Use an async IIFE to handle the promise immediately
+			let caughtError: Error | undefined;
+			const testPromise = (async () => {
+				try {
+					await sendCostAlert(mockParams);
+					expect.fail("Should have thrown error");
+				} catch (error) {
+					caughtError = error as Error;
+				}
+			})();
 
 			// Fast-forward through all retries
 			await vi.advanceTimersByTimeAsync(1000); // 1st retry
 			await vi.advanceTimersByTimeAsync(2000); // 2nd retry
 
-			// Catch the error to prevent unhandled rejection
-			try {
-				await promise;
-				expect.fail("Should have thrown error");
-			} catch (error) {
-				expect((error as Error).message).toBe(
-					"Slack webhook failed: 500 Internal Server Error",
-				);
-			}
+			// Wait for completion
+			await testPromise;
 
+			expect(caughtError).toBeDefined();
+			expect(caughtError?.message).toBe(
+				"Slack webhook failed: 500 Internal Server Error",
+			);
 			expect(fetchMock).toHaveBeenCalledTimes(3);
 
 			vi.useRealTimers();
@@ -195,20 +201,26 @@ describe("Slack Webhook Service", () => {
 
 			vi.useFakeTimers();
 
-			const promise = sendCostAlert(mockParams);
+			// Use an async IIFE to handle the promise immediately
+			let caughtError: Error | undefined;
+			const testPromise = (async () => {
+				try {
+					await sendCostAlert(mockParams);
+					expect.fail("Should have thrown error");
+				} catch (error) {
+					caughtError = error as Error;
+				}
+			})();
 
 			// Fast-forward through all retries
 			await vi.advanceTimersByTimeAsync(1000);
 			await vi.advanceTimersByTimeAsync(2000);
 
-			// Catch the error to prevent unhandled rejection
-			try {
-				await promise;
-				expect.fail("Should have thrown error");
-			} catch (error) {
-				expect((error as Error).message).toBe("Network error");
-			}
+			// Wait for completion
+			await testPromise;
 
+			expect(caughtError).toBeDefined();
+			expect(caughtError?.message).toBe("Network error");
 			expect(fetchMock).toHaveBeenCalledTimes(3);
 
 			vi.useRealTimers();
@@ -230,19 +242,24 @@ describe("Slack Webhook Service", () => {
 
 			vi.useFakeTimers({ now: 0 });
 
-			const promise = sendCostAlert(mockParams);
+			// Use an async IIFE to handle the promise immediately
+			let error: Error | undefined;
+			const testPromise = (async () => {
+				try {
+					await sendCostAlert(mockParams);
+				} catch (e) {
+					error = e as Error;
+				}
+			})();
 
 			// Fast-forward with exact timing
 			await vi.advanceTimersByTimeAsync(1000); // 1st retry
 			await vi.advanceTimersByTimeAsync(2000); // 2nd retry
 
-			// Catch error to prevent unhandled rejection
-			try {
-				await promise;
-			} catch (e) {
-				// Expected to fail
-			}
+			// Wait for completion
+			await testPromise;
 
+			expect(error).toBeDefined();
 			expect(attemptTimestamps).toEqual([
 				0, // Initial attempt
 				1000, // 1st retry after 1s
