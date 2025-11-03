@@ -33,14 +33,6 @@ Sentry.init({
 	// Server-specific integrations
 	integrations: [
 		// Add performance monitoring for HTTP requests
-		Sentry.httpIntegration({
-			// Optional: Filter requests
-			tracing: {
-				shouldCreateSpanForRequest: (url) => {
-					// Don't create spans for health checks
-					return !url.includes("/health") && !url.includes("/api/health");
-				},
-			},
-		}),
+		Sentry.httpIntegration(),
 	],
 });
