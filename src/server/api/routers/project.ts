@@ -19,12 +19,18 @@
 import { TRPCError } from "@trpc/server";
 import { subDays } from "date-fns";
 import { z } from "zod";
+import { extractLast4 } from "~/lib/api-key-utils";
 import { logger } from "~/lib/logger";
+import { sanitizeInput } from "~/lib/sanitize";
 import {
 	generateEncryptedApiKey,
 	validateApiKey,
 } from "~/lib/services/encryption/api-key-manager";
-import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+import {
+	createTRPCRouter,
+	protectedProcedure,
+	sensitiveProcedure,
+} from "~/server/api/trpc";
 import { db } from "~/server/db";
 
 /**
@@ -127,7 +133,7 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ input, ctx }) => {
-			const userId = ctx.session.user.id;
+			const userId = ctx.session?.user.id;
 
 			// Verify user has access to the team
 			const userTeams = await db.teamMember.findMany({
@@ -192,7 +198,7 @@ export const projectRouter = createTRPCRouter({
 	 * Includes recent 30-day costs for each project
 	 */
 	getAll: protectedProcedure.query(async ({ ctx }) => {
-		const userId = ctx.session.user.id;
+		const userId = ctx.session?.user.id;
 
 		// Get user's teams
 		const userTeams = await db.teamMember.findMany({
@@ -279,7 +285,7 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.query(async ({ input, ctx }) => {
-			const userId = ctx.session.user.id;
+			const userId = ctx.session?.user.id;
 
 			// Get user's teams
 			const userTeams = await db.teamMember.findMany({
@@ -318,9 +324,10 @@ export const projectRouter = createTRPCRouter({
 						select: {
 							id: true,
 							provider: true,
+							last4: true, // Security: Only return last 4 chars
 							isActive: true,
 							createdAt: true,
-							encryptedKey: true, // For getting last 4 chars
+							// Security: NEVER include encryptedKey, encryptedDataKey, or iv
 						},
 					},
 					metrics: true,
@@ -397,15 +404,8 @@ export const projectRouter = createTRPCRouter({
 
 			return {
 				...project,
-				apiKeys: project.apiKeys.map((key) => {
-					// Security: Never send encrypted credentials to client
-					const { encryptedKey, ...safeKey } = key;
-					return {
-						...safeKey,
-						// Only include last 4 chars for display
-						last4: encryptedKey.slice(-4),
-					};
-				}),
+				// apiKeys already include only safe fields (last4, no encrypted data)
+				apiKeys: project.apiKeys,
 				costData: project.costData.map((cost) => ({
 					...cost,
 					cost: cost.cost.toNumber(),
@@ -431,7 +431,7 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ input, ctx }) => {
-			const userId = ctx.session.user.id;
+			const userId = ctx.session?.user.id;
 
 			// Get user's teams
 			const userTeams = await db.teamMember.findMany({
@@ -488,8 +488,10 @@ export const projectRouter = createTRPCRouter({
 	/**
 	 * Add a member to a project
 	 * Only Team owner/admin can add members
+	 *
+	 * Security: Rate limited to prevent abuse
 	 */
-	addMember: protectedProcedure
+	addMember: sensitiveProcedure
 		.input(
 			z.object({
 				projectId: z.string(),
@@ -497,7 +499,7 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ input, ctx }) => {
-			const userId = ctx.session.user.id;
+			const userId = ctx.session?.user.id;
 
 			// Only Team admin can add members
 			await ensureTeamAdmin(userId, input.projectId);
@@ -564,8 +566,10 @@ export const projectRouter = createTRPCRouter({
 	/**
 	 * Remove a member from a project
 	 * Only Team owner/admin can remove members
+	 *
+	 * Security: Rate limited to prevent abuse
 	 */
-	removeMember: protectedProcedure
+	removeMember: sensitiveProcedure
 		.input(
 			z.object({
 				projectId: z.string(),
@@ -573,7 +577,7 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ input, ctx }) => {
-			const userId = ctx.session.user.id;
+			const userId = ctx.session?.user.id;
 
 			// Only Team admin can remove members
 			await ensureTeamAdmin(userId, input.projectId);
@@ -628,7 +632,7 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.query(async ({ input, ctx }) => {
-			const userId = ctx.session.user.id;
+			const userId = ctx.session?.user.id;
 
 			// Ensure user has access to project
 			await ensureProjectAccess(userId, input.projectId);
@@ -658,8 +662,10 @@ export const projectRouter = createTRPCRouter({
 	/**
 	 * Generate and store an encrypted API key for the project
 	 * Project member or Team admin can add API keys
+	 *
+	 * Security: Rate limited to 10 requests/min, stores only last4 chars for display
 	 */
-	generateApiKey: protectedProcedure
+	generateApiKey: sensitiveProcedure
 		.input(
 			z.object({
 				projectId: z.string(),
@@ -668,7 +674,7 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const userId = ctx.session.user.id;
+			const userId = ctx.session?.user.id;
 
 			// Ensure user has access to project
 			await ensureProjectAccess(userId, input.projectId);
@@ -682,6 +688,9 @@ export const projectRouter = createTRPCRouter({
 				});
 			}
 
+			// Extract last 4 characters for display (security: never send encrypted key to client)
+			const last4 = extractLast4(input.apiKey);
+
 			// Encrypt the API key using KMS envelope encryption
 			const encrypted = await generateEncryptedApiKey(input.apiKey);
 
@@ -693,6 +702,7 @@ export const projectRouter = createTRPCRouter({
 					encryptedKey: encrypted.ciphertext,
 					encryptedDataKey: encrypted.encryptedDataKey,
 					iv: encrypted.iv,
+					last4, // Security: Only store last 4 chars for display
 					isActive: true,
 				},
 			});
@@ -713,6 +723,8 @@ export const projectRouter = createTRPCRouter({
 	/**
 	 * Get all API keys for a project
 	 * Project member or Team admin can view
+	 *
+	 * Security: Returns only last4 chars, never exposes encrypted key
 	 */
 	getApiKeys: protectedProcedure
 		.input(
@@ -721,7 +733,7 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.query(async ({ input, ctx }) => {
-			const userId = ctx.session.user.id;
+			const userId = ctx.session?.user.id;
 
 			// Ensure user has access to project
 			await ensureProjectAccess(userId, input.projectId);
@@ -734,45 +746,38 @@ export const projectRouter = createTRPCRouter({
 				select: {
 					id: true,
 					provider: true,
+					last4: true, // Security: Only return last 4 chars
 					isActive: true,
 					createdAt: true,
 					updatedAt: true,
-					encryptedKey: true, // For masking
+					// Security: NEVER include encryptedKey, encryptedDataKey, or iv
 				},
 				orderBy: {
 					createdAt: "desc",
 				},
 			});
 
-			// Mask API keys for security
-			return apiKeys.map((key) => {
-				const { encryptedKey, ...safeKey } = key;
-				// Create masked version (first 8 chars + ... + last 4 chars)
-				const maskedKey =
-					encryptedKey.length > 12
-						? `${encryptedKey.slice(0, 8)}...${encryptedKey.slice(-4)}`
-						: "****";
-
-				return {
-					...safeKey,
-					maskedKey,
-				};
-			});
+			return apiKeys;
 		}),
 
 	/**
 	 * Disable an API key with audit logging
 	 * Project member or Team admin can disable
+	 *
+	 * Security: Rate limited, input sanitized
 	 */
-	disableApiKey: protectedProcedure
+	disableApiKey: sensitiveProcedure
 		.input(
 			z.object({
 				apiKeyId: z.string(),
-				reason: z.string().min(1, "Reason is required"),
+				reason: z
+					.string()
+					.min(1, "Reason is required")
+					.transform(sanitizeInput),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const userId = ctx.session.user.id;
+			const userId = ctx.session?.user.id;
 
 			// Get API key with project info
 			const apiKey = await db.apiKey.findUnique({
@@ -834,16 +839,21 @@ export const projectRouter = createTRPCRouter({
 	/**
 	 * Enable an API key with audit logging
 	 * Project member or Team admin can enable
+	 *
+	 * Security: Rate limited, input sanitized
 	 */
-	enableApiKey: protectedProcedure
+	enableApiKey: sensitiveProcedure
 		.input(
 			z.object({
 				apiKeyId: z.string(),
-				reason: z.string().optional(),
+				reason: z
+					.string()
+					.optional()
+					.transform((val) => (val ? sanitizeInput(val) : val)),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const userId = ctx.session.user.id;
+			const userId = ctx.session?.user.id;
 
 			// Get API key with project info
 			const apiKey = await db.apiKey.findUnique({
@@ -907,16 +917,20 @@ export const projectRouter = createTRPCRouter({
 	 * Project member or Team admin can delete
 	 *
 	 * Note: CostData.apiKeyId is nullable, so cascade deletion is safe
+	 * Security: Rate limited, input sanitized
 	 */
-	deleteApiKey: protectedProcedure
+	deleteApiKey: sensitiveProcedure
 		.input(
 			z.object({
 				apiKeyId: z.string(),
-				reason: z.string().min(1, "Reason is required"),
+				reason: z
+					.string()
+					.min(1, "Reason is required")
+					.transform(sanitizeInput),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const userId = ctx.session.user.id;
+			const userId = ctx.session?.user.id;
 
 			// Get API key with project info
 			const apiKey = await db.apiKey.findUnique({

@@ -158,7 +158,8 @@ export default defineConfig({
 		timeout: 120 * 1000,
 		stdout: "ignore",
 		stderr: "pipe",
-		env: loadTestEnv(),
+		// Merge process.env with test env to preserve PATH and other shell variables
+		env: { ...process.env, ...loadTestEnv() },
 	},
 
 	/* Output folder for test artifacts */

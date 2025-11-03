@@ -37,6 +37,10 @@ export const env = createEnv({
 
 		// Application URLs
 		NEXTAUTH_URL: z.string().url().optional(),
+
+		// Rate limiting (Upstash Redis)
+		UPSTASH_REDIS_URL: z.string().url().optional(),
+		UPSTASH_REDIS_TOKEN: z.string().optional(),
 	},
 
 	/**
@@ -68,6 +72,8 @@ export const env = createEnv({
 		ADMIN_EMAIL: process.env.ADMIN_EMAIL,
 		SLACK_WEBHOOK_URL: process.env.SLACK_WEBHOOK_URL,
 		NEXTAUTH_URL: process.env.NEXTAUTH_URL,
+		UPSTASH_REDIS_URL: process.env.UPSTASH_REDIS_URL,
+		UPSTASH_REDIS_TOKEN: process.env.UPSTASH_REDIS_TOKEN,
 	},
 	/**
 	 * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

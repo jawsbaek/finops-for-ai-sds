@@ -126,6 +126,7 @@ model ApiKey {
   encryptedKey     String   @map("encrypted_key") @db.Text
   encryptedDataKey String   @map("encrypted_data_key") @db.Text
   iv               String // Initialization vector for AES encryption
+  last4            String   @db.VarChar(4) // Last 4 chars for display (security: never send encrypted key to client)
   isActive         Boolean  @default(true) @map("is_active")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
@@ -135,6 +136,7 @@ model ApiKey {
 
   @@index([projectId])
   @@index([provider])
+  @@index([last4]) // For quick lookup and display
   @@map("api_keys")
 }
 

@@ -13,6 +13,7 @@ import { ZodError } from "zod";
 
 import { auth } from "~/server/auth";
 import { db } from "~/server/db";
+import { rateLimits } from "./ratelimit";
 
 /**
  * 1. CONTEXT
@@ -131,3 +132,58 @@ export const protectedProcedure = t.procedure
 			},
 		});
 	});
+
+/**
+ * Rate limiting middleware factory
+ *
+ * Creates a middleware that applies rate limiting based on user ID or IP address
+ * @param type - 'sensitive' for strict limits (10/min) or 'normal' for regular limits (100/min)
+ *
+ * Note: This middleware is designed to be used AFTER protectedProcedure,
+ * so ctx.session.user is guaranteed to exist
+ */
+const rateLimitMiddleware = (type: "sensitive" | "normal") =>
+	t.middleware(async ({ ctx, next }) => {
+		// After protectedProcedure, session.user is guaranteed to exist
+		// Fallback to 'anonymous' for type safety (should never happen in practice)
+		const identifier = ctx.session?.user?.id ?? "anonymous";
+
+		const { success, limit, remaining, reset } =
+			await rateLimits[type].limit(identifier);
+
+		if (!success) {
+			const retryAfterSeconds = Math.ceil((reset - Date.now()) / 1000);
+			throw new TRPCError({
+				code: "TOO_MANY_REQUESTS",
+				message: `요청 한도를 초과했습니다. ${retryAfterSeconds}초 후 다시 시도해주세요.`,
+			});
+		}
+
+		return next({
+			ctx: {
+				...ctx,
+				rateLimit: { limit, remaining, reset },
+			},
+		});
+	});
+
+/**
+ * Sensitive procedure with strict rate limiting (10 requests/min)
+ *
+ * Use for operations like:
+ * - API key generation/deletion
+ * - Member management
+ * - Other security-sensitive mutations
+ */
+export const sensitiveProcedure = protectedProcedure.use(
+	rateLimitMiddleware("sensitive"),
+);
+
+/**
+ * Normal procedure with regular rate limiting (100 requests/min)
+ *
+ * Use for standard queries and mutations
+ */
+export const normalProcedure = protectedProcedure.use(
+	rateLimitMiddleware("normal"),
+);
