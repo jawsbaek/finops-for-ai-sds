@@ -1,0 +1,31 @@
+# This workflow is currently disabled
+# To re-enable: rename this file to test.yml and delete the original test.yml
+# Disabled due to bun install issues in GitHub Actions
+
+name: Tests (Disabled)
+
+on:
+  workflow_dispatch:  # Only manual trigger
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+  NEXTAUTH_SECRET: test-secret-for-ci
+  NEXTAUTH_URL: http://localhost:3000
+  CRON_SECRET: test-cron-secret
+
+jobs:
+  disabled:
+    name: Workflows Disabled
+    runs-on: ubuntu-latest
+    steps:
+      - name: Info
+        run: |
+          echo "GitHub Actions workflows are currently disabled"
+          echo "To re-enable, rename test.yml.disabled to test.yml"
