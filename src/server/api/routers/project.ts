@@ -133,7 +133,11 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ input, ctx }) => {
-			const userId = ctx.session?.user.id;
+			const session = ctx.session;
+			if (!session?.user) {
+				throw new TRPCError({ code: "UNAUTHORIZED" });
+			}
+			const userId = session.user.id;
 
 			// Verify user has access to the team
 			const userTeams = await db.teamMember.findMany({
@@ -198,7 +202,11 @@ export const projectRouter = createTRPCRouter({
 	 * Includes recent 30-day costs for each project
 	 */
 	getAll: protectedProcedure.query(async ({ ctx }) => {
-		const userId = ctx.session?.user.id;
+		const session = ctx.session;
+		if (!session?.user) {
+			throw new TRPCError({ code: "UNAUTHORIZED" });
+		}
+		const userId = session.user.id;
 
 		// Get user's teams
 		const userTeams = await db.teamMember.findMany({
@@ -285,7 +293,11 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.query(async ({ input, ctx }) => {
-			const userId = ctx.session?.user.id;
+			const session = ctx.session;
+			if (!session?.user) {
+				throw new TRPCError({ code: "UNAUTHORIZED" });
+			}
+			const userId = session.user.id;
 
 			// Get user's teams
 			const userTeams = await db.teamMember.findMany({
@@ -431,7 +443,11 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ input, ctx }) => {
-			const userId = ctx.session?.user.id;
+			const session = ctx.session;
+			if (!session?.user) {
+				throw new TRPCError({ code: "UNAUTHORIZED" });
+			}
+			const userId = session.user.id;
 
 			// Get user's teams
 			const userTeams = await db.teamMember.findMany({
@@ -499,7 +515,11 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ input, ctx }) => {
-			const userId = ctx.session?.user.id;
+			const session = ctx.session;
+			if (!session?.user) {
+				throw new TRPCError({ code: "UNAUTHORIZED" });
+			}
+			const userId = session.user.id;
 
 			// Only Team admin can add members
 			await ensureTeamAdmin(userId, input.projectId);
@@ -577,7 +597,11 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ input, ctx }) => {
-			const userId = ctx.session?.user.id;
+			const session = ctx.session;
+			if (!session?.user) {
+				throw new TRPCError({ code: "UNAUTHORIZED" });
+			}
+			const userId = session.user.id;
 
 			// Only Team admin can remove members
 			await ensureTeamAdmin(userId, input.projectId);
@@ -632,7 +656,11 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.query(async ({ input, ctx }) => {
-			const userId = ctx.session?.user.id;
+			const session = ctx.session;
+			if (!session?.user) {
+				throw new TRPCError({ code: "UNAUTHORIZED" });
+			}
+			const userId = session.user.id;
 
 			// Ensure user has access to project
 			await ensureProjectAccess(userId, input.projectId);
@@ -674,7 +702,11 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const userId = ctx.session?.user.id;
+			const session = ctx.session;
+			if (!session?.user) {
+				throw new TRPCError({ code: "UNAUTHORIZED" });
+			}
+			const userId = session.user.id;
 
 			// Ensure user has access to project
 			await ensureProjectAccess(userId, input.projectId);
@@ -733,7 +765,11 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.query(async ({ input, ctx }) => {
-			const userId = ctx.session?.user.id;
+			const session = ctx.session;
+			if (!session?.user) {
+				throw new TRPCError({ code: "UNAUTHORIZED" });
+			}
+			const userId = session.user.id;
 
 			// Ensure user has access to project
 			await ensureProjectAccess(userId, input.projectId);
@@ -777,7 +813,11 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const userId = ctx.session?.user.id;
+			const session = ctx.session;
+			if (!session?.user) {
+				throw new TRPCError({ code: "UNAUTHORIZED" });
+			}
+			const userId = session.user.id;
 
 			// Get API key with project info
 			const apiKey = await db.apiKey.findUnique({
@@ -853,7 +893,11 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const userId = ctx.session?.user.id;
+			const session = ctx.session;
+			if (!session?.user) {
+				throw new TRPCError({ code: "UNAUTHORIZED" });
+			}
+			const userId = session.user.id;
 
 			// Get API key with project info
 			const apiKey = await db.apiKey.findUnique({
@@ -930,7 +974,11 @@ export const projectRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const userId = ctx.session?.user.id;
+			const session = ctx.session;
+			if (!session?.user) {
+				throw new TRPCError({ code: "UNAUTHORIZED" });
+			}
+			const userId = session.user.id;
 
 			// Get API key with project info
 			const apiKey = await db.apiKey.findUnique({
