@@ -117,6 +117,11 @@ finops-for-ai/
 │   │   └── logger.ts             # Pino logger
 │   ├── components/               # React 컴포넌트
 │   │   ├── ui/                   # shadcn/ui 컴포넌트
+│   │   ├── dialogs/              # 모달 다이얼로그 (프로젝트 관리)
+│   │   │   ├── AddMemberDialog.tsx        # 멤버 추가
+│   │   │   ├── AddApiKeyDialog.tsx        # API 키 추가
+│   │   │   ├── ConfirmDisableKeyDialog.tsx # API 키 비활성화
+│   │   │   └── ConfirmDeleteKeyDialog.tsx  # API 키 삭제
 │   │   ├── charts/               # Recharts 래퍼 (Story 1.8)
 │   │   ├── dashboard/            # 대시보드 컴포넌트
 │   │   └── forms/                # 폼 컴포넌트
@@ -158,6 +163,7 @@ finops-for-ai/
 | 1.7 | `src/lib/services/encryption/api-key-manager.ts`, `src/server/api/routers/project.ts` | Novel Pattern 2 (프로젝트 기반 귀속) |
 | 1.8 | `src/app/(dashboard)/`, `src/components/charts/`, `src/components/dashboard/` | Next.js, Recharts, Tailwind |
 | 1.9 | `__tests__/e2e/`, `__tests__/unit/`, Vercel Analytics, Sentry | Playwright, Vitest, Monitoring |
+| **1.10** | `src/server/api/routers/project.ts` (member CRUD), `src/server/api/routers/team.ts` (getMembers), `src/components/dialogs/` | **프로젝트 멤버 & API 키 관리 UI** |
 
 ### Epic 2: 클라우드 확장 및 검증 루프
 
@@ -532,11 +538,128 @@ OpenAI API 호출 (with context)
 ```
 
 **권한 모델:**
-- **프로젝트 멤버**: API 키 등록, 조회, 비활성화 가능
+- **프로젝트 멤버**: API 키 등록, 조회, 비활성화, 재활성화, 삭제 가능
 - **팀 관리자**: 모든 프로젝트 API 키 조회 및 긴급 비활성화 가능
 - **프로젝트 멤버십**: ProjectMember 모델로 명시적 관리
+  - 팀 관리자가 팀 멤버를 프로젝트에 추가/제거
+  - 프로젝트 멤버는 프로젝트 리소스(비용 데이터, API 키) 접근 가능
 
-**영향받는 Epic:** Epic 1 (Story 1.7), Epic 2 (Story 2.1, 2.3)
+**실제 구현 (2025-11-03):**
+
+**6. API Key Lifecycle Management** (`src/server/api/routers/project.ts`)
+```typescript
+// API 키 재활성화 (비활성화된 키 복구)
+enableApiKey: protectedProcedure
+  .input(z.object({ apiKeyId: z.string(), reason: z.string().optional() }))
+  .mutation(async ({ ctx, input }) => {
+    await ensureProjectAccess(userId, apiKey.project.id);
+
+    const updated = await db.apiKey.update({
+      where: { id: input.apiKeyId },
+      data: { isActive: true },
+    });
+
+    // Audit log
+    await db.auditLog.create({
+      data: {
+        userId,
+        actionType: "api_key_enabled",
+        resourceType: "api_key",
+        resourceId: input.apiKeyId,
+        metadata: { reason: input.reason || "Re-enabled API key" },
+      },
+    });
+
+    return updated;
+  }),
+
+// API 키 영구 삭제
+deleteApiKey: protectedProcedure
+  .input(z.object({ apiKeyId: z.string(), reason: z.string().min(1) }))
+  .mutation(async ({ ctx, input }) => {
+    await ensureProjectAccess(userId, apiKey.project.id);
+
+    // Audit log (삭제 전에 기록)
+    await db.auditLog.create({ ... });
+
+    // Hard delete (CostData.apiKeyId는 nullable이므로 안전)
+    await db.apiKey.delete({ where: { id: input.apiKeyId } });
+
+    return { success: true };
+  }),
+```
+
+**7. Project Member Management** (`src/server/api/routers/project.ts`, `src/server/api/routers/team.ts`)
+```typescript
+// 팀 멤버 목록 조회 (드롭다운용)
+team.getMembers: protectedProcedure
+  .input(z.object({ teamId: z.string() }))
+  .query(async ({ ctx, input }) => {
+    // 권한 확인
+    const membership = await db.teamMember.findUnique({ ... });
+    if (!membership) throw new TRPCError({ code: "FORBIDDEN" });
+
+    // 팀의 모든 멤버 반환
+    return await db.teamMember.findMany({
+      where: { teamId: input.teamId },
+      include: { user: { select: { id: true, name: true, email: true } } },
+      orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+    });
+  }),
+
+// 프로젝트 멤버 추가 (Team admin only) - 기존 구현 유지
+project.addMember: protectedProcedure
+  .mutation(async ({ input, ctx }) => {
+    await ensureTeamAdmin(userId, input.projectId);
+    // ...
+  }),
+
+// 프로젝트 멤버 제거 (Team admin only) - 기존 구현 유지
+project.removeMember: protectedProcedure
+  .mutation(async ({ input, ctx }) => {
+    await ensureTeamAdmin(userId, input.projectId);
+    // ...
+  }),
+```
+
+**8. Management UI Components** (`src/components/dialogs/`)
+```typescript
+// AddMemberDialog: 팀 멤버 드롭다운에서 선택하여 프로젝트에 추가
+// - 이미 추가된 멤버는 비활성화
+// - 멤버 이름, 이메일, 역할 표시
+
+// AddApiKeyDialog: API 키 추가
+// - Provider 선택 (현재 OpenAI만)
+// - API 키 입력 (password type, 마스킹)
+// - 클라이언트 측 형식 검증 (sk- prefix)
+// - 보안 경고 표시
+
+// ConfirmDisableKeyDialog: API 키 비활성화 확인 (기존)
+// - Type-to-confirm: "차단" 입력 필요
+// - 비활성화 사유 입력 (textarea)
+
+// ConfirmDeleteKeyDialog: API 키 영구 삭제 확인 (신규)
+// - Type-to-confirm: "삭제" 입력 필요
+// - 삭제 사유 입력 (textarea)
+// - 영구 삭제 경고 메시지
+```
+
+**9. Project Detail Page Integration** (`src/app/(dashboard)/projects/[id]/page.tsx`)
+- **섹션 순서**: Stats → Members → API Keys → Charts → Metrics
+- **Project Members Section**:
+  - 멤버 목록 (이름, 이메일, 가입일)
+  - "멤버 추가" 버튼 (Team admin만 표시)
+  - 멤버 제거 버튼 (confirm 다이얼로그)
+  - 빈 상태 처리
+- **API Keys Management Section**:
+  - API 키 목록 (provider, status badge, last4, 생성일)
+  - 활성 키: "비활성화" + "삭제" 버튼
+  - 비활성 키: "재활성화" + "삭제" 버튼
+  - "API 키 추가" 버튼
+  - 보안 주의사항 표시
+  - 기존 "긴급 API 키 관리" 섹션 통합
+
+**영향받는 Epic:** Epic 1 (Story 1.7, 1.10), Epic 2 (Story 2.1, 2.3)
 
 ---
 
@@ -1726,9 +1849,168 @@ Context Tracker + Value Metrics + Efficiency Calculator 패턴
 - 팀 멤버를 모든 프로젝트에 자동 추가
 - 사용자가 프로젝트별로 API 키 재등록 필요
 
+**구현 완료 (2025-11-03)**:
+- ✅ enableApiKey, deleteApiKey 엔드포인트 추가
+- ✅ team.getMembers 엔드포인트 추가
+- ✅ 프로젝트 상세 페이지 UI 통합
+- ✅ 모달 기반 관리 인터페이스 구현
+
+---
+
+### ADR-008: 프로젝트 멤버 관리 및 API 키 생명주기 UI
+
+**날짜**: 2025-11-03
+**상태**: Accepted
+
+**컨텍스트**:
+ADR-007에서 프로젝트 기반 API 키 격리 패턴을 정의했으나, 실제 프로젝트 멤버 관리 및 API 키 생명주기 관리를 위한 사용자 인터페이스가 필요함. 기존 구현에는 긴급 비활성화만 존재하고, 멤버 추가/제거 및 API 키 생성/삭제 UI가 없었음.
+
+**결정**:
+프로젝트 상세 페이지에 통합된 관리 UI 구현, 모달 기반 인터랙션 채택
+
+**근거**:
+
+**1. 모달 기반 UX 선택**
+- 페이지 내 섹션 추가 대신 다이얼로그 사용
+- 중요한 작업(멤버 추가, API 키 추가)에 집중된 UX 제공
+- Type-to-confirm 패턴으로 파괴적 작업(삭제, 비활성화) 보호
+- 일관된 사용자 경험 (기존 ConfirmDisableKeyDialog와 동일한 패턴)
+
+**2. 섹션 순서 재구성**
+- **이전**: Stats → Charts → Emergency API Key Management → Metrics
+- **변경**: Stats → Members → API Keys → Charts → Metrics
+- **근거**: 관리 기능을 분석 기능보다 우선 배치, 프로젝트 설정을 먼저 확인
+
+**3. API 키 생명주기 완전 지원**
+- **추가**: generateApiKey (기존)
+- **비활성화**: disableApiKey (기존)
+- **재활성화**: enableApiKey (신규) - 실수로 비활성화한 키 복구
+- **삭제**: deleteApiKey (신규) - 영구 삭제, audit log 보존
+- **근거**: 실제 운영에서 키 복구 및 정리 필요성 높음
+
+**4. 팀 멤버 드롭다운 패턴**
+- 이메일 직접 입력 대신 팀 멤버 목록에서 선택
+- 이미 추가된 멤버는 비활성화 처리
+- **근거**:
+  - 오타 방지
+  - 팀 외부 사용자 추가 불가 (보안)
+  - UX 단순화 (자동완성 불필요)
+
+**5. 권한 모델 명확화**
+- **팀 관리자 (Team admin)**:
+  - 프로젝트 멤버 추가/제거 (ensureTeamAdmin)
+  - 모든 프로젝트 API 키 조회 및 긴급 비활성화
+- **프로젝트 멤버**:
+  - API 키 추가, 비활성화, 재활성화, 삭제 (ensureProjectAccess)
+  - 프로젝트 비용 데이터 조회
+  - 멤버 관리 불가 (Team admin만)
+
+**구현**:
+
+**Backend API (tRPC)**:
+```typescript
+// src/server/api/routers/team.ts
+team.getMembers: protectedProcedure
+  - 팀 멤버 목록 조회 (드롭다운용)
+  - 권한: 팀 멤버만
+  - 정렬: role (owner, admin, member) → createdAt
+
+// src/server/api/routers/project.ts
+project.enableApiKey: protectedProcedure
+  - API 키 재활성화
+  - 권한: 프로젝트 멤버 또는 Team admin
+  - Audit log: api_key_enabled
+
+project.deleteApiKey: protectedProcedure
+  - API 키 영구 삭제
+  - 권한: 프로젝트 멤버 또는 Team admin
+  - Audit log: api_key_deleted (삭제 전에 기록)
+  - 안전성: CostData.apiKeyId nullable (과거 데이터 보존)
+```
+
+**Frontend Components**:
+```typescript
+// src/components/dialogs/AddMemberDialog.tsx
+- Select 컴포넌트로 팀 멤버 드롭다운
+- 이미 추가된 멤버 disabled 처리
+- 선택한 멤버 미리보기
+- 로딩 상태, 에러 처리
+
+// src/components/dialogs/AddApiKeyDialog.tsx
+- Provider 선택 (현재 OpenAI만, 확장 가능)
+- Password input (API 키 마스킹)
+- 클라이언트 측 검증 (sk- prefix)
+- 보안 경고 표시
+
+// src/components/dialogs/ConfirmDeleteKeyDialog.tsx
+- Type-to-confirm: "삭제" 입력 필요
+- 사유 입력 (textarea, 1-500자)
+- 영구 삭제 경고 (복구 불가)
+- 과거 비용 데이터 보존 안내
+```
+
+**Page Integration**:
+```typescript
+// src/app/(dashboard)/projects/[id]/page.tsx
+- 2개 새로운 섹션 추가 (Members, API Keys)
+- 4개 다이얼로그 상태 관리
+- Query waterfall 회피 (getById에 필요한 데이터 포함)
+- Mutation 후 invalidate로 자동 새로고침
+```
+
+**대안**:
+
+**1. 인라인 폼 vs 모달**
+- **고려**: 섹션 내 인라인 폼으로 추가
+- **기각**: 페이지가 길어지고, 중요 작업에 집중력 떨어짐
+- **선택**: 모달이 중요 작업에 더 적합
+
+**2. 이메일 입력 vs 드롭다운**
+- **고려**: 이메일 직접 입력 + 자동완성
+- **기각**: 오타 위험, 팀 외부 사용자 추가 가능성
+- **선택**: 드롭다운이 더 안전하고 단순
+
+**3. 별도 페이지 vs 통합**
+- **고려**: /projects/[id]/members, /projects/[id]/api-keys 분리
+- **기각**: 네비게이션 복잡도 증가, 데이터 중복 fetch
+- **선택**: 단일 페이지 통합이 더 직관적
+
+**트레이드오프**:
+
+**장점**:
+- ✅ 일관된 UX (모든 중요 작업이 모달)
+- ✅ Type-to-confirm으로 사고 방지
+- ✅ 팀 멤버 드롭다운으로 오류 최소화
+- ✅ 완전한 API 키 생명주기 관리
+
+**단점**:
+- ⚠️ 모달이 많아질 수 있음 (현재 4개)
+- ⚠️ Query waterfall 가능성 (teamMembers query가 project query 이후)
+- ⚠️ 페이지가 길어짐 (5개 섹션)
+
+**해결 방안**:
+- 모달 수: 기능별로 명확히 분리되어 혼란 없음
+- Query waterfall: enabled 옵션으로 불필요한 fetch 방지
+- 페이지 길이: 섹션별 Card로 명확히 구분, 스크롤 자연스러움
+
+**검증 결과 (Code Review 2025-11-03)**:
+- ✅ T3 App 표준 85% 준수
+- ✅ TypeScript 사용 우수 95%
+- ✅ Loading state 완벽 구현 100%
+- ⚠️ 보안 이슈 발견 (API 키 노출, Rate limiting 없음)
+- ⚠️ 에러 메시지 한국어 변환 필요
+
+**향후 개선 계획**:
+1. Rate limiting 추가 (Upstash Ratelimit)
+2. API 키 last4 필드 DB 저장 (encryptedKey 노출 방지)
+3. 에러 메시지 한국어 번역
+4. Query 최적화 (N+1 방지, waterfall 제거)
+5. Audit log 트랜잭션 보장
+
 ---
 
 _Generated by BMAD Decision Architecture Workflow v1.3.2_
 _Date: 2025-10-31_
+_Updated: 2025-11-03 (ADR-008 추가)_
 _For: Issac_
 _Project: finops-for-ai (Level 2)_
