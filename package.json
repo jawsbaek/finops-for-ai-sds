@@ -21,6 +21,11 @@
 		"test": "vitest",
 		"test:ui": "vitest --ui",
 		"test:coverage": "vitest --coverage",
+		"test:e2e": "playwright test",
+		"test:e2e:ui": "playwright test --ui",
+		"test:e2e:debug": "playwright test --debug",
+		"test:e2e:report": "playwright show-report",
+		"lighthouse": "lhci autorun",
 		"typecheck": "tsc --noEmit",
 		"validate:colors": "bun run scripts/validate-colors.ts"
 	},
@@ -73,6 +78,9 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",
+		"@lhci/cli": "^0.15.1",
+		"@playwright/test": "^1.56.1",
+		"@sentry/nextjs": "^10.22.0",
 		"@tailwindcss/postcss": "^4.0.15",
 		"@types/node": "^20.14.10",
 		"@types/react": "^19.0.0",
