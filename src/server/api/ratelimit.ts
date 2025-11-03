@@ -13,22 +13,44 @@ import { env } from "~/env";
 /**
  * In-memory rate limiter for local development
  * Uses Map to track requests per identifier
+ *
+ * WARNING: This is NOT production-ready:
+ * - Not atomic (race conditions possible between read/write)
+ * - Single-instance only (no distributed rate limiting)
+ * - Memory-based (resets on server restart)
+ *
+ * Use Upstash Redis (rateLimits with Redis) for production.
  */
 class InMemoryRateLimiter {
 	private requests: Map<string, { count: number; resetAt: number }> = new Map();
 	private maxRequests: number;
 	private windowMs: number;
+	private cleanupInterval: NodeJS.Timeout;
 
 	constructor(maxRequests: number, windowMs: number) {
 		this.maxRequests = maxRequests;
 		this.windowMs = windowMs;
+
+		// Periodic cleanup to prevent memory leaks
+		// Clean up expired entries every minute
+		this.cleanupInterval = setInterval(() => {
+			const now = Date.now();
+			for (const [key, value] of this.requests.entries()) {
+				if (value.resetAt <= now) {
+					this.requests.delete(key);
+				}
+			}
+		}, 60_000);
+
+		// Allow Node.js to exit even if interval is active
+		this.cleanupInterval.unref();
 	}
 
 	async limit(identifier: string) {
 		const now = Date.now();
 		const record = this.requests.get(identifier);
 
-		// Clean up expired records
+		// Clean up expired record if exists
 		if (record && record.resetAt <= now) {
 			this.requests.delete(identifier);
 		}
@@ -92,6 +114,14 @@ function createRateLimiters() {
 				prefix: "ratelimit:normal",
 			}),
 		};
+	}
+
+	// Production: Fail fast if Redis is not configured
+	if (env.NODE_ENV === "production") {
+		throw new Error(
+			"UPSTASH_REDIS_URL and UPSTASH_REDIS_TOKEN are required in production. " +
+				"In-memory rate limiting is not suitable for production use.",
+		);
 	}
 
 	// Development: Use in-memory rate limiter

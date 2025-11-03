@@ -155,7 +155,7 @@ const rateLimitMiddleware = (type: "sensitive" | "normal") =>
 			const retryAfterSeconds = Math.ceil((reset - Date.now()) / 1000);
 			throw new TRPCError({
 				code: "TOO_MANY_REQUESTS",
-				message: `요청 한도를 초과했습니다. ${retryAfterSeconds}초 후 다시 시도해주세요.`,
+				message: `Rate limit exceeded. Please try again in ${retryAfterSeconds} seconds.`,
 			});
 		}
 
