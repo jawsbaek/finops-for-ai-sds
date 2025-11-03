@@ -79,8 +79,8 @@ test.describe("Weekly Report", () => {
 		// Navigate to reports page
 		await page.goto("/reports");
 
-		// Wait for page to load
-		await page.waitForTimeout(2000);
+		// Wait for page to fully load
+		await page.waitForLoadState("networkidle");
 
 		// Verify page loaded successfully (has heading)
 		await expect(page.locator("h2").first()).toBeVisible();

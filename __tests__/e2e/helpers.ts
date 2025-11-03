@@ -62,7 +62,7 @@ export async function createTeam(page: Page, teamName: string): Promise<void> {
 	const createButton = page.locator('button:has-text("생성")').last();
 	await createButton.waitFor({ state: "visible" });
 	await expect(createButton).toBeEnabled({ timeout: 5000 });
-	await createButton.click({ force: true });
+	await createButton.click();
 
 	// Wait for navigation to team detail page
 	await page.waitForURL(/\/teams\/[^/]+$/, { timeout: 15000 });
@@ -93,7 +93,7 @@ export async function createProject(
 	const createButton = page.locator('button:has-text("생성")').last();
 	await createButton.waitFor({ state: "visible" });
 	await expect(createButton).toBeEnabled({ timeout: 5000 });
-	await createButton.click({ force: true });
+	await createButton.click();
 
 	// Wait for navigation to project detail page
 	await page.waitForURL(/\/projects\/[^/]+$/, { timeout: 15000 });

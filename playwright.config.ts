@@ -115,13 +115,6 @@ export default defineConfig({
 			name: "chromium",
 			use: {
 				...devices["Desktop Chrome"],
-				// Enable Chrome DevTools for debugging
-				launchOptions: {
-					args: [
-						"--disable-web-security",
-						"--disable-features=IsolateOrigins,site-per-process",
-					],
-				},
 			},
 		},
 
