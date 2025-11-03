@@ -45,7 +45,7 @@ development_status:
   1-6-주간-리포트-생성-및-발송: done
   1-7-팀별-api-키-생성-및-자동-귀속: done
   1-8-긴급-조치용-기본-웹-대시보드: done
-  1-9-epic-1-통합-테스트-및-검증: review
+  1-9-epic-1-통합-테스트-및-검증: done
   epic-1-retrospective: optional
 
   epic-2: backlog
