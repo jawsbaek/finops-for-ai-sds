@@ -53,14 +53,15 @@ export default function ProjectSettingsPage() {
 		});
 
 	// Fetch team admin keys to check availability
-	const { data: adminKeys } = api.team.getAdminApiKeys.useQuery(
-		{
-			teamId: project?.teamId ?? "",
-		},
-		{
-			enabled: !!project?.teamId,
-		},
-	);
+	const { data: adminKeys, isLoading: isLoadingAdminKeys } =
+		api.team.getAdminApiKeys.useQuery(
+			{
+				teamId: project?.teamId ?? "",
+			},
+			{
+				enabled: !!project?.teamId,
+			},
+		);
 
 	// Fetch existing alerts
 	const { data: alerts, refetch: refetchAlerts } = api.alert.getAlerts.useQuery(
@@ -159,7 +160,7 @@ export default function ProjectSettingsPage() {
 			</div>
 
 			{/* Setup Progress Banner */}
-			{!hasAnyAdminKeys && (
+			{!isLoadingAdminKeys && !hasAnyAdminKeys && (
 				<Alert
 					variant="default"
 					className="border-destructive/50 bg-destructive/10"
@@ -191,7 +192,7 @@ export default function ProjectSettingsPage() {
 				</Alert>
 			)}
 
-			{hasAnyAdminKeys && !isProviderLinked && (
+			{!isLoadingAdminKeys && hasAnyAdminKeys && !isProviderLinked && (
 				<Alert variant="default" className="border-primary bg-primary/10">
 					<Settings2 className="h-4 w-4 text-primary" />
 					<AlertDescription>
@@ -246,7 +247,7 @@ export default function ProjectSettingsPage() {
 			</Card>
 
 			{/* Setup Guide */}
-			{!isProviderLinked && hasAnyAdminKeys && (
+			{!isLoadingAdminKeys && !isProviderLinked && hasAnyAdminKeys && (
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2 text-base">

@@ -15,7 +15,8 @@ export default function TeamSettingsPage() {
 	const teamId = params.teamId as string;
 
 	// Fetch admin keys to show status
-	const { data: adminKeys } = api.team.getAdminApiKeys.useQuery({ teamId });
+	const { data: adminKeys, isLoading: isLoadingAdminKeys } =
+		api.team.getAdminApiKeys.useQuery({ teamId });
 
 	const hasActiveKeys = adminKeys?.some((k) => k.isActive) ?? false;
 
@@ -30,7 +31,7 @@ export default function TeamSettingsPage() {
 			</div>
 
 			{/* Quick Status Banner */}
-			{!hasActiveKeys && (
+			{!isLoadingAdminKeys && !hasActiveKeys && (
 				<Alert variant="default" className="border-primary bg-primary/10">
 					<AlertCircle className="h-4 w-4 text-primary" />
 					<AlertDescription>

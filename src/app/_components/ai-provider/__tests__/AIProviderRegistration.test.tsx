@@ -82,6 +82,26 @@ describe("AIProviderRegistration", () => {
 		vi.clearAllMocks();
 	});
 
+	it("should show loading state while fetching admin keys", () => {
+		// Mock loading state
+		vi.mocked(trpcReact.api.team.getAdminApiKeys.useQuery).mockReturnValue({
+			data: undefined,
+			isLoading: true,
+			isError: false,
+			error: null,
+		} as never);
+
+		render(
+			<AIProviderRegistration
+				projectId="test-project-123"
+				teamId="test-team-456"
+				onSuccess={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByTestId("provider-loading")).toBeInTheDocument();
+	});
+
 	it("should show no admin keys message when none available", () => {
 		// Mock empty admin keys
 		vi.mocked(trpcReact.api.team.getAdminApiKeys.useQuery).mockReturnValue({

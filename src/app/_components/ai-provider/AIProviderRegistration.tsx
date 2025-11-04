@@ -42,12 +42,13 @@ export function AIProviderRegistration({
 	const [validationError, setValidationError] = useState<string>("");
 
 	// Fetch admin keys for the team
-	const { data: adminKeys } = api.team.getAdminApiKeys.useQuery(
-		{ teamId },
-		{
-			refetchOnWindowFocus: false,
-		},
-	);
+	const { data: adminKeys, isLoading: isLoadingAdminKeys } =
+		api.team.getAdminApiKeys.useQuery(
+			{ teamId },
+			{
+				refetchOnWindowFocus: false,
+			},
+		);
 
 	// Register mutation
 	const registerMutation = api.project.registerAIProvider.useMutation({
@@ -145,6 +146,18 @@ export function AIProviderRegistration({
 			aiProjectId: projectIdInput,
 		});
 	};
+
+	// Show loading state while fetching admin keys
+	if (isLoadingAdminKeys) {
+		return (
+			<div
+				className="flex items-center justify-center p-8"
+				data-testid="provider-loading"
+			>
+				<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+			</div>
+		);
+	}
 
 	// Show info if no admin keys available
 	if (!adminKeys || adminKeys.length === 0 || providers.length === 0) {
