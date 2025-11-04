@@ -151,8 +151,8 @@ model ProjectMember {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, userId])
-  @@index([userId])
-  @@index([projectId, userId]) // Compound index for join queries
+  @@index([userId], map: "idx_project_member_user")
+  @@index([projectId, userId], map: "idx_project_member_lookup")
   @@map("project_members")
 }
 
@@ -183,10 +183,10 @@ model ApiKey {
   project  Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   costData CostData[]
 
-  @@index([projectId])
-  @@index([provider])
-  @@index([last4]) // For quick lookup and display
-  @@index([projectId, isActive]) // Compound index for filtering active keys
+  @@index([projectId], map: "idx_api_key_project")
+  @@index([provider], map: "idx_api_key_provider")
+  @@index([last4], map: "idx_api_key_last4")
+  @@index([projectId, isActive], map: "idx_api_key_active_filter")
   @@map("api_keys")
 }
 
@@ -269,10 +269,10 @@ model AuditLog {
   metadata     Json? // { reason: string, previous_state: any }
   createdAt    DateTime @default(now()) @map("created_at")
 
-  @@index([userId, createdAt])
-  @@index([resourceType, resourceId])
-  @@index([actionType]) // Index for filtering by action type
-  @@index([createdAt]) // Index for time-based queries
+  @@index([userId, createdAt], map: "idx_audit_log_user_time")
+  @@index([resourceType, resourceId], map: "idx_audit_log_resource")
+  @@index([actionType], map: "idx_audit_log_action")
+  @@index([createdAt], map: "idx_audit_log_time")
   @@map("audit_logs")
 }
 

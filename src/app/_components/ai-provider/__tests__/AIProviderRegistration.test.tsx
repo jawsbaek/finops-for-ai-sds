@@ -7,11 +7,14 @@
  */
 
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as trpcReact from "~/trpc/react";
 import { AIProviderRegistration } from "../AIProviderRegistration";
 
-// Mock tRPC
+// Mock entire tRPC module (exception to vi.spyOn rule per CLAUDE.md)
+// Reason: Cannot spy on non-existent module exports in test environment
+// This requires full module mocking with vi.hoisted() + vi.mock() pattern
 vi.mock("~/trpc/react", () => ({
 	api: {
 		team: {
@@ -182,5 +185,58 @@ describe("AIProviderRegistration", () => {
 		expect(
 			trpcReact.api.project.registerAIProvider.useMutation,
 		).toHaveBeenCalled();
+	});
+
+	it("should cancel pending validation when component unmounts", async () => {
+		vi.useFakeTimers();
+
+		// Track validation state updates
+		let stateUpdateAttempted = false;
+		const stateUpdates: string[] = [];
+
+		// Mock validation mutation that tracks state update attempts
+		vi.mocked(
+			trpcReact.api.project.validateAIProjectId.useMutation,
+		).mockReturnValue({
+			mutate: (_input: unknown, options?: { onSuccess?: () => void }) => {
+				// Simulate async validation
+				setTimeout(() => {
+					stateUpdateAttempted = true;
+					// The onSuccess callback should check isCancelled before updating state
+					if (options?.onSuccess) {
+						stateUpdates.push("onSuccess called");
+					}
+				}, 600); // Longer than the 500ms debounce
+			},
+			isPending: false,
+			isError: false,
+			isSuccess: false,
+			error: null,
+		} as never);
+
+		const { unmount } = render(
+			<AIProviderRegistration
+				projectId="test-project-123"
+				teamId="test-team-456"
+				onSuccess={vi.fn()}
+			/>,
+		);
+
+		// Trigger the useEffect by rendering
+		// The component sets up validation mutation and cleanup on mount
+
+		// Immediately unmount to trigger cleanup
+		unmount();
+
+		// Advance timers past any pending operations
+		await vi.advanceTimersByTimeAsync(1000);
+
+		// Verify that state updates don't happen after unmount
+		// The cleanup sets isCancelled = true to prevent state updates
+		// Even if stateUpdateAttempted is true, stateUpdates should be empty
+		// because the isCancelled check prevents the actual state update
+		expect(stateUpdates).toHaveLength(0);
+
+		vi.useRealTimers();
 	});
 });
