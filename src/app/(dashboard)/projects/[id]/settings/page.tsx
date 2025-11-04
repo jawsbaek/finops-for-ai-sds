@@ -18,10 +18,12 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Bell, Trash2 } from "lucide-react";
+import { Bell, Cloud, Trash2 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { AIProviderDisplay } from "~/app/_components/ai-provider/AIProviderDisplay";
+import { AIProviderRegistration } from "~/app/_components/ai-provider/AIProviderRegistration";
 import { api } from "~/trpc/react";
 
 export default function ProjectSettingsPage() {
@@ -33,6 +35,22 @@ export default function ProjectSettingsPage() {
 		"daily",
 	);
 	const [thresholdValue, setThresholdValue] = useState<string>("");
+
+	// Fetch project data
+	const { data: project, refetch: refetchProject } =
+		api.project.getById.useQuery({
+			id: projectId,
+		});
+
+	// Fetch team admin keys to check availability
+	const { data: adminKeys } = api.team.getAdminApiKeys.useQuery(
+		{
+			teamId: project?.teamId ?? "",
+		},
+		{
+			enabled: !!project?.teamId,
+		},
+	);
 
 	// Fetch existing alerts
 	const { data: alerts, refetch: refetchAlerts } = api.alert.getAlerts.useQuery(
@@ -95,14 +113,72 @@ export default function ProjectSettingsPage() {
 		}
 	};
 
+	// Check if admin key is available for current provider
+	const hasAdminKey =
+		project?.aiProvider && project?.aiOrganizationId
+			? adminKeys?.some(
+					(key) =>
+						key.provider === project.aiProvider &&
+						key.organizationId === project.aiOrganizationId &&
+						key.isActive,
+				)
+			: false;
+
+	// Get display name for current provider org
+	const providerDisplayName =
+		project?.aiProvider && project?.aiOrganizationId
+			? (adminKeys?.find(
+					(key) =>
+						key.provider === project.aiProvider &&
+						key.organizationId === project.aiOrganizationId,
+				)?.displayName ?? undefined)
+			: undefined;
+
 	return (
-		<div className="space-y-6">
+		<div className="space-y-6" data-testid="project-settings-page">
 			<div>
 				<h2 className="font-bold text-2xl text-foreground">프로젝트 설정</h2>
 				<p className="mt-2 text-muted-foreground text-sm">
-					비용 임계값 알림을 설정하고 관리합니다
+					AI 제공자 연결 및 비용 임계값 알림을 설정하고 관리합니다
 				</p>
 			</div>
+
+			<Separator />
+
+			{/* AI Provider Settings */}
+			<Card>
+				<CardHeader>
+					<CardTitle className="flex items-center gap-2">
+						<Cloud className="h-5 w-5" />
+						AI 제공자 연결
+					</CardTitle>
+					<CardDescription>
+						프로젝트를 AI 제공자의 프로젝트 ID와 연결하여 비용 데이터를
+						수집합니다.
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					{project?.aiProvider &&
+					project?.aiOrganizationId &&
+					project?.aiProjectId ? (
+						<AIProviderDisplay
+							projectId={projectId}
+							provider={project.aiProvider}
+							organizationId={project.aiOrganizationId}
+							aiProjectId={project.aiProjectId}
+							displayName={providerDisplayName}
+							hasAdminKey={hasAdminKey ?? false}
+							onUnlink={() => void refetchProject()}
+						/>
+					) : (
+						<AIProviderRegistration
+							projectId={projectId}
+							teamId={project?.teamId ?? ""}
+							onSuccess={() => void refetchProject()}
+						/>
+					)}
+				</CardContent>
+			</Card>
 
 			<Separator />
 

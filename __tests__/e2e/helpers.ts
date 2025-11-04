@@ -134,3 +134,55 @@ export async function elementExists(
 ): Promise<boolean> {
 	return (await page.locator(selector).count()) > 0;
 }
+
+/**
+ * Extract ID from current URL (e.g., /teams/abc123 -> abc123)
+ */
+export function extractIdFromUrl(url: string, segment: string): string {
+	const match = url.match(new RegExp(`\\/${segment}\\/([^/]+)`));
+	if (!match?.[1]) {
+		throw new Error(`Failed to extract ${segment} ID from URL: ${url}`);
+	}
+	return match[1];
+}
+
+/**
+ * Setup complete test environment: signup user, create team and project
+ * Returns teamId and projectId
+ */
+export async function setupTeamAndProject(
+	page: Page,
+): Promise<{ teamId: string; projectId: string }> {
+	// Create user
+	const user = generateTestUser();
+	await signupUser(page, user);
+
+	// Create team
+	await page.goto("/teams");
+	await page.click(
+		'button:has-text("팀 생성"), button:has-text("Create Team")',
+	);
+	await page.waitForSelector("input#name");
+	await page.fill("input#name", "Test Team");
+	const createTeamButton = page.locator('button:has-text("생성")').last();
+	await createTeamButton.waitFor({ state: "visible" });
+	await expect(createTeamButton).toBeEnabled({ timeout: 5000 });
+	await createTeamButton.click();
+	await page.waitForURL(/\/teams\/[^/]+$/, { timeout: 15000 });
+	const teamId = extractIdFromUrl(page.url(), "teams");
+
+	// Create project
+	await page.goto("/projects");
+	await page.click('button:has-text("새 프로젝트")');
+	await page.waitForSelector("input#name");
+	await page.fill("input#name", "Test Project");
+	await page.fill("textarea#description", "Test project");
+	const createProjectButton = page.locator('button:has-text("생성")').last();
+	await createProjectButton.waitFor({ state: "visible" });
+	await expect(createProjectButton).toBeEnabled({ timeout: 5000 });
+	await createProjectButton.click();
+	await page.waitForURL(/\/projects\/[^/]+$/, { timeout: 15000 });
+	const projectId = extractIdFromUrl(page.url(), "projects");
+
+	return { teamId, projectId };
+}

@@ -24,12 +24,12 @@ function getKMSService(): KMSEnvelopeEncryption {
  * Validate API key format for a given provider
  *
  * @param apiKey - The API key to validate
- * @param provider - The provider type ('openai', 'aws', 'azure')
+ * @param provider - The provider type ('openai', 'anthropic', 'aws', 'azure')
  * @returns true if valid, false otherwise
  */
 export function validateApiKey(
 	apiKey: string,
-	provider: "openai" | "aws" | "azure",
+	provider: "openai" | "anthropic" | "aws" | "azure",
 ): boolean {
 	if (!apiKey || apiKey.trim().length === 0) {
 		return false;
@@ -53,6 +53,10 @@ export function validateApiKey(
 			// Note: The lookahead prevents keys composed entirely of underscores/hyphens
 			// while still allowing flexible patterns for various OpenAI key formats
 			return /^sk-(?=.*[a-zA-Z0-9])[a-zA-Z0-9_-]{20,256}$/.test(apiKey);
+
+		case "anthropic":
+			// Anthropic API keys: sk-ant-{alphanumeric and hyphens}
+			return /^sk-ant-[a-zA-Z0-9_-]{20,256}$/.test(apiKey);
 
 		case "aws":
 			// AWS access keys: AKIA[20 alphanumeric chars]

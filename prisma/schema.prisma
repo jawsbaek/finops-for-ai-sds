@@ -52,9 +52,9 @@ model Team {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  members            TeamMember[]
-  projects           Project[]
-  organizationApiKey OrganizationApiKey? // 1:1 relation for OpenAI Admin API Key
+  members             TeamMember[]
+  projects            Project[]
+  organizationApiKeys OrganizationApiKey[] // ✅ Changed from singular to array
 
   @@index([ownerId])
   @@map("teams")
@@ -77,9 +77,10 @@ model TeamMember {
 
 // Team-level OpenAI Organization Admin API Key for Costs API
 model OrganizationApiKey {
-  id       String @id @default(cuid())
-  teamId   String @unique @map("team_id") // 1 Team : 1 Admin Key
-  provider String // 'openai' (future: support other providers)
+  id             String  @id @default(cuid())
+  teamId         String  @map("team_id") // ✅ Remove @unique to allow 1:N
+  provider       String // 'openai', 'anthropic', 'aws', 'azure'
+  organizationId String? @map("organization_id") // Provider's org identifier
 
   // KMS Envelope Encryption (same pattern as ApiKey)
   encryptedKey     String @map("encrypted_key") @db.Text
@@ -87,14 +88,20 @@ model OrganizationApiKey {
   iv               String // Initialization vector
 
   // Security and metadata
-  last4     String   @db.VarChar(4) // Last 4 chars for UI display
-  isActive  Boolean  @default(true) @map("is_active")
-  keyType   String   @default("admin") @map("key_type") // 'admin' | 'service_account'
+  last4    String  @db.VarChar(4) // Last 4 chars for UI display
+  isActive Boolean @default(true) @map("is_active")
+  keyType  String  @default("admin") @map("key_type") // 'admin' | 'service_account'
+
+  // NEW: Display name for UI
+  displayName String? @map("display_name")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
+  // NEW: Compound unique constraint
+  @@unique([teamId, provider, organizationId], name: "unique_team_provider_org")
   @@index([teamId])
   @@index([provider, isActive])
   @@map("organization_api_keys")
@@ -106,8 +113,13 @@ model Project {
   name        String
   description String?
 
-  // OpenAI Project ID for Costs API filtering
-  openaiProjectId String? @unique @map("openai_project_id") // e.g., "proj_abc123"
+  // NEW: Provider-specific organization + project identifiers
+  aiProvider       String? @map("ai_provider") // 'openai', 'anthropic', etc.
+  aiOrganizationId String? @map("ai_organization_id") // Links to OrganizationApiKey
+  aiProjectId      String? @map("ai_project_id") // Provider's project identifier
+
+  // Legacy field (keep for backward compatibility)
+  openaiProjectId String? @unique @map("openai_project_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -119,8 +131,13 @@ model Project {
   metrics    ProjectMetrics?
   costAlerts CostAlert[]
 
+  // NEW: Compound unique constraint
+  @@unique([aiProvider, aiOrganizationId, aiProjectId], name: "unique_provider_org_project")
   @@index([teamId])
-  @@index([openaiProjectId]) // Fast lookup for Costs API queries
+  @@index([openaiProjectId])
+  // NEW: Indexes for cost collection queries
+  @@index([aiProvider, aiOrganizationId])
+  @@index([teamId, aiProvider, aiOrganizationId])
   @@map("projects")
 }
 

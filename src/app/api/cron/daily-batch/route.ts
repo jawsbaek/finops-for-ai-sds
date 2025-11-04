@@ -106,8 +106,10 @@ export async function GET(request: Request) {
 				// Costs API (v2) - Team-based collection
 				const activeTeams = await db.team.findMany({
 					where: {
-						organizationApiKey: {
-							isActive: true,
+						organizationApiKeys: {
+							some: {
+								isActive: true,
+							},
 						},
 					},
 					select: {
