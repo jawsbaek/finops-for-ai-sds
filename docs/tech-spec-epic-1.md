@@ -1,28 +1,38 @@
 # Epic Technical Specification: 프로젝트 기반 및 OpenAI 비용 관리 시스템
 
-Date: 2025-11-01
+Date: 2025-01-04
+Original Date: 2025-11-01
 Author: Issac
 Epic ID: 1
 Status: Draft
+
+> **🔄 MIGRATION NOTE:** This document has been updated to reflect the OpenAI Costs API migration. See [BREAKING_CHANGES.md](./migration/BREAKING_CHANGES.md) for migration details and breaking changes.
 
 ---
 
 ## Overview
 
-Epic 1은 FinOps for AI 플랫폼의 핵심 기능을 구축하는 첫 번째 단계입니다. OpenAI API 비용 추적, 실시간 비용 폭주 방지, 행동 유도 리포트를 통해 즉각적인 가치를 제공합니다. 이 Epic은 PRD의 Phase 1A 핵심 가설인 "비용-가치 연결이 실제 의사결정을 개선하는가?"를 검증하는 데 초점을 맞춥니다.
+Epic 1은 FinOps for AI 플랫폼의 핵심 기능을 구축하는 첫 번째 단계입니다. OpenAI Costs API 비용 추적, 실시간 비용 폭주 방지, 행동 유도 리포트를 통해 즉각적인 가치를 제공합니다. 이 Epic은 PRD의 Phase 1A 핵심 가설인 "비용-가치 연결이 실제 의사결정을 개선하는가?"를 검증하는 데 초점을 맞춥니다.
 
-T3 Stack (Next.js 16 + tRPC + Prisma + NextAuth)을 기반으로 구축되며, Vercel에 배포되고 Neon PostgreSQL을 사용합니다. 두 가지 Novel Patterns(비용-가치 연결, 아키텍처 기반 귀속)를 구현하여 기존 FinOps 도구와 차별화합니다.
+T3 Stack (Next.js 16 + tRPC + Prisma + NextAuth)을 기반으로 구축되며, Vercel에 배포되고 Neon PostgreSQL을 사용합니다. 두 가지 Novel Patterns(비용-가치 연결, Team-level Admin API Key + 프로젝트 ID 필터링)를 구현하여 기존 FinOps 도구와 차별화합니다.
+
+핵심 기능:
+- Team-level Admin API Key 관리 (Organization-level visibility)
+- OpenAI Project ID 등록 및 검증
+- Costs API 기반 일일 배치 수집 (pagination 지원)
+- 실시간 비용 임계값 모니터링 및 알림
+- 비용-가치 연결 분석 및 주간 리포트
 
 ## Objectives and Scope
 
 **In Scope:**
 - ✅ 프로젝트 인프라 및 기본 인증 시스템 (Story 1.1)
-- ✅ OpenAI API 비용 일일 배치 수집 (Story 1.2)
+- ✅ OpenAI Costs API 비용 일일 배치 수집 (organization-level, project_ids filtering) (Story 1.2)
 - ✅ 비용-가치 컨텍스트 기록 시스템 (Story 1.3)
 - ✅ 실시간 비용 임계값 모니터링 및 알림 (Story 1.4)
 - ✅ 긴급 API 키 비활성화 메커니즘 (Story 1.5)
 - ✅ 주간 리포트 생성 및 발송 (Story 1.6)
-- ✅ 팀별 API 키 생성 및 자동 귀속 (Story 1.7)
+- ✅ 팀 Admin API 키 등록 및 프로젝트 ID 관리 (Story 1.7)
 - ✅ 긴급 조치용 기본 웹 대시보드 (Story 1.8)
 - ✅ Epic 1 통합 테스트 및 검증 (Story 1.9)
 
@@ -53,7 +63,7 @@ T3 Stack (Next.js 16 + tRPC + Prisma + NextAuth)을 기반으로 구축되며, V
 
 **Novel Patterns:**
 - Pattern 1: 비용-가치 연결 (Context Tracker + Value Metrics + Efficiency Calculator)
-- Pattern 2: 아키텍처 기반 귀속 (API Key Manager + Cost Attribution Engine)
+- Pattern 2: Team-level Admin API 키 + 프로젝트 ID 필터링 (Organization-level cost attribution)
 
 **Constraints:**
 - Serverless 함수 최대 실행 시간: 5분 (Vercel Pro)
@@ -69,11 +79,12 @@ T3 Stack (Next.js 16 + tRPC + Prisma + NextAuth)을 기반으로 구축되며, V
 | Module | Responsibility | Inputs | Outputs | Owner Story |
 |--------|---------------|--------|---------|-------------|
 | **Authentication Service** | 사용자 인증 및 세션 관리 | Email, Password | JWT Token, Session | Story 1.1 |
-| **OpenAI Cost Collector** | OpenAI API 사용량 일일 수집 | API Keys, Date | Cost Records | Story 1.2 |
+| **OpenAI Cost Collector** | OpenAI Costs API organization 비용 일일 수집 (pagination 지원) | Admin API Key, Project IDs[], Start Time, End Time | Cost Buckets (time-aggregated, line_item grouped) | Story 1.2 |
 | **Context Tracker** | API 호출 메타데이터 기록 | Project ID, Task Type, User Intent | Contextualized Cost Data | Story 1.3 |
 | **Threshold Monitor** | 비용 임계값 모니터링 (5분 폴링) | Cost Data, Alert Rules | Alert Events | Story 1.4 |
 | **Notification Service** | Slack/Email 알림 발송 | Alert Events | Notifications Sent | Story 1.4 |
-| **API Key Manager** | API 키 암호화/복호화 (KMS) | Plain API Key, Team ID | Encrypted Key Record | Story 1.5, 1.7 |
+| **API Key Manager** | Admin API 키 및 Project ID 관리 (KMS) | Plain Admin API Key, Team ID / OpenAI Project ID, Project ID | Encrypted Key Record / Validated Project ID | Story 1.5, 1.7 |
+| **Project ID Validator** | OpenAI Project ID 소속 검증 | Team ID, OpenAI Project ID | Validation Result | Story 1.7 |
 | **Report Generator** | 주간 리포트 생성 | Cost Data, Metrics | HTML/JSON Report | Story 1.6 |
 | **Efficiency Calculator** | 비용 대비 성과 계산 | Cost Data, Project Metrics | Efficiency Scores | Story 1.6, 1.8 |
 | **Dashboard API** | tRPC 엔드포인트 제공 | User Session | Dashboard Data | Story 1.8 |
@@ -104,42 +115,64 @@ model Team {
   name       String
   created_at DateTime @default(now())
 
-  members    TeamMember[]
-  api_keys   ApiKey[]
-  cost_data  CostData[]
+  members            TeamMember[]
+  projects           Project[]
+  organizationApiKey OrganizationApiKey? // 🆕 1:1 관계
 
   @@map("teams")
 }
 
-// API 키 (Story 1.5, 1.7 - KMS 암호화)
-model ApiKey {
-  id                 String   @id @default(cuid())
-  team_id            String
-  provider           String   // "openai"
-  encrypted_key      String   @db.Text
-  encrypted_data_key String   @db.Text
-  iv                 String
-  is_active          Boolean  @default(true)
-  created_at         DateTime @default(now())
+// 🆕 Team-level Organization Admin API Key (Story 1.7) - Multi-Org Support
+model OrganizationApiKey {
+  id               String   @id @default(cuid())
+  teamId           String   @map("team_id")  // ✅ Removed @unique - now 1:N (team can have multiple org keys)
+  provider         String   // 'openai', 'anthropic', 'aws', 'azure'
+  organizationId   String?  @map("organization_id") // OpenAI: org_xxx, Anthropic: workspace_xxx
 
-  team      Team       @relation(fields: [team_id], references: [id], onDelete: Cascade)
-  cost_data CostData[]
+  // KMS Envelope Encryption
+  encryptedKey     String   @map("encrypted_key") @db.Text
+  encryptedDataKey String   @map("encrypted_data_key") @db.Text
+  iv               String   // Initialization vector
 
-  @@index([team_id, provider])
-  @@map("api_keys")
+  // 보안 및 메타데이터
+  last4            String   @db.VarChar(4) // 마지막 4자리 (UI 표시용)
+  isActive         Boolean  @default(true) @map("is_active")
+  keyType          String   @default("admin") @map("key_type") // 'admin' | 'service_account'
+  displayName      String?  @map("display_name") // User-friendly name for UI
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, provider, organizationId], name: "unique_team_provider_org")
+  @@index([teamId])
+  @@index([provider, isActive])
+  @@map("organization_api_keys")
 }
 
-// 프로젝트 (Story 1.3)
+// 프로젝트 (Story 1.3, 1.7) - Multi-Provider Support
 model Project {
   id          String   @id @default(cuid())
   name        String
   description String?
   team_id     String
+
+  // 🆕 AI Provider Integration (Multi-Provider Support)
+  aiProvider       String?  @map("ai_provider")        // 'openai', 'anthropic', 'aws', 'azure'
+  aiOrganizationId String?  @map("ai_organization_id") // org_xxx, workspace_xxx, account_id, subscription_id
+  aiProjectId      String?  @map("ai_project_id")      // proj_xxx, project_xxx, application_id
+
   created_at  DateTime @default(now())
 
+  team      Team             @relation(fields: [team_id], references: [id])
   cost_data CostData[]
   metrics   ProjectMetrics?
 
+  @@unique([aiProvider, aiOrganizationId, aiProjectId], name: "unique_provider_org_project")
+  @@index([team_id])
+  @@index([aiProvider, aiOrganizationId])
+  @@index([aiProjectId])
   @@map("projects")
 }
 
@@ -155,18 +188,29 @@ model ProjectMetrics {
   @@map("project_metrics")
 }
 
-// 비용 데이터 (Story 1.2, 1.3)
+// 비용 데이터 (Story 1.2, 1.3) - Costs API 지원
 model CostData {
   id          String   @id @default(cuid())
   team_id     String
   project_id  String?
-  api_key_id  String
+
+  // 공통 필드
   provider    String   // "openai"
-  service     String   // "gpt-4", "gpt-3.5-turbo"
-  model       String?
-  tokens      Int?
+  service     String   // Usage API: 'gpt-4', Costs API: line_item
   cost        Decimal  @db.Decimal(10,2)
-  date        DateTime @db.Date
+  date        DateTime @db.Date // Usage API: 단일 날짜, Costs API: bucketStartTime에서 변환
+
+  // 🆕 Costs API 전용 필드
+  bucketStartTime DateTime? @map("bucket_start_time") // Unix timestamp → DateTime
+  bucketEndTime   DateTime? @map("bucket_end_time")
+  lineItem        String?   @map("line_item") // e.g., "Image models", "GPT-4"
+  currency        String?   @default("usd")
+
+  // API 버전 트래킹 (데이터 출처 구분)
+  apiVersion String @default("usage_v1") @map("api_version") // 'usage_v1' | 'costs_v1'
+
+  // 🆕 Multi-Provider Metadata
+  providerMetadata Json? @map("provider_metadata") // Provider-specific data: { organizationId, aiProjectId, etc. }
 
   // Novel Pattern 1: Context
   task_type   String?
@@ -176,10 +220,12 @@ model CostData {
 
   team    Team    @relation(fields: [team_id], references: [id])
   project Project? @relation(fields: [project_id], references: [id])
-  api_key ApiKey  @relation(fields: [api_key_id], references: [id])
 
+  // 중복 제거 전략 변경
+  @@unique([project_id, bucketStartTime, bucketEndTime, lineItem, apiVersion], name: "unique_cost_bucket")
   @@index([team_id, date])
   @@index([project_id, date])
+  @@index([apiVersion]) // 🆕 API 버전별 쿼리용
   @@map("cost_data")
 }
 
@@ -208,10 +254,11 @@ model CronLog {
 ```
 
 **Key Relationships:**
-- Team 1:N ApiKey (팀별 고유 키)
-- Team 1:N CostData (자동 귀속)
-- ApiKey 1:N CostData (키로 비용 추적)
+- Team 1:1 OrganizationApiKey (team-level admin key) **[NEW]**
+- Team 1:N Project (프로젝트 소속)
+- Project 1:N CostData (프로젝트별 비용, openaiProjectId 매핑) **[UPDATED]**
 - Project 1:1 ProjectMetrics (비용-가치 연결)
+- CostData.apiVersion로 Usage API vs Costs API 구분 **[NEW]**
 
 ### APIs and Interfaces
 
@@ -240,7 +287,7 @@ export const authRouter = createTRPCRouter({
     })
 });
 
-// src/server/api/routers/project.ts (Story 1.3, 1.8)
+// src/server/api/routers/project.ts (Story 1.3, 1.7, 1.8)
 export const projectRouter = createTRPCRouter({
   getAll: protectedProcedure
     .query(async ({ ctx }) => {
@@ -261,24 +308,54 @@ export const projectRouter = createTRPCRouter({
     }))
     .mutation(async ({ input, ctx }) => {
       // Novel Pattern 1: 성과 메트릭 업데이트
+    }),
+
+  // 🆕 Story 1.7: OpenAI Project ID 등록
+  registerOpenAIProjectId: protectedProcedure
+    .input(z.object({
+      projectId: z.string(),
+      openaiProjectId: z.string().regex(/^proj_[a-zA-Z0-9_-]+$/)
+    }))
+    .mutation(async ({ input, ctx }) => {
+      // 1. Verify team has active Admin Key
+      // 2. Check openaiProjectId uniqueness
+      // 3. Update project.openaiProjectId
+      // 4. Audit log
+    }),
+
+  // 🆕 Story 1.7: OpenAI Project ID 검증
+  validateOpenAIProjectId: protectedProcedure
+    .input(z.object({
+      teamId: z.string(),
+      openaiProjectId: z.string()
+    }))
+    .mutation(async ({ input, ctx }) => {
+      // Test Costs API call with Admin Key + Project ID filter
+      // Returns { valid: boolean, error?: string }
     })
 });
 
-// src/server/api/routers/team.ts (Story 1.7)
+// 🆕 src/server/api/routers/team.ts (Story 1.7)
 export const teamRouter = createTRPCRouter({
-  create: protectedProcedure
-    .input(z.object({ name: z.string() }))
-    .mutation(async ({ input, ctx }) => {
-      // 팀 생성 + OpenAI API 키 발급 (Novel Pattern 2)
-    }),
-
-  generateApiKey: protectedProcedure
+  // 🆕 Team Admin API Key 등록
+  registerAdminApiKey: protectedProcedure
     .input(z.object({
       teamId: z.string(),
-      provider: z.literal("openai")
+      apiKey: z.string().min(20)
     }))
     .mutation(async ({ input, ctx }) => {
-      // KMS 암호화 후 저장
+      // 1. Verify team ownership/admin role
+      // 2. Validate API key format
+      // 3. KMS encrypt
+      // 4. Upsert OrganizationApiKey
+      // 5. Audit log
+    }),
+
+  // 🆕 Admin API Key 상태 조회
+  getAdminApiKeyStatus: protectedProcedure
+    .input(z.object({ teamId: z.string() }))
+    .query(async ({ input, ctx }) => {
+      // Returns { id, last4, isActive, keyType, createdAt }
     })
 });
 
@@ -290,7 +367,7 @@ export const costRouter = createTRPCRouter({
       days: z.number().default(7)
     }))
     .query(async ({ input, ctx }) => {
-      // 최근 N일 비용 데이터
+      // 최근 N일 비용 데이터 (Costs API 기준)
     }),
 
   disableApiKey: protectedProcedure
@@ -324,7 +401,7 @@ export const alertRouter = createTRPCRouter({
 export async function GET(request: Request) {
   // 1. CRON_SECRET 검증
   // 2. Idempotency 체크
-  // 3. OpenAI Cost Collector 실행
+  // 3. OpenAI Cost Collector V2 실행 (Costs API)
   // 4. 로그 기록
 }
 
@@ -346,45 +423,89 @@ export async function GET(request: Request) {
 **External API Integrations:**
 
 ```typescript
-// OpenAI Usage API (Story 1.2)
-GET https://api.openai.com/v1/usage
+// OpenAI Costs API (Story 1.2)
+GET https://api.openai.com/v1/organization/costs
 Headers:
-  Authorization: Bearer {OPENAI_API_KEY}
+  Authorization: Bearer {ADMIN_API_KEY}
 Query:
-  date: YYYY-MM-DD
+  start_time: Unix timestamp (seconds)
+  end_time: Unix timestamp (seconds)
+  bucket_width: 1d (일별 버킷)
+  limit: 180 (최대 버킷 수)
+  page: {pagination_cursor}
+  group_by: line_item,project_id
+  project_ids: proj_abc123,proj_def456 (필터링)
 
 Response:
 {
+  "object": "page",
   "data": [
     {
-      "aggregation_timestamp": 1234567890,
-      "snapshot_id": "abc123",
-      "model": "gpt-4",
-      "n_requests": 1000,
-      "n_context_tokens": 50000,
-      "n_generated_tokens": 10000,
-      "cost_in_cents": 12345
+      "object": "bucket",
+      "start_time": 1234567890,
+      "end_time": 1234654290,
+      "results": [
+        {
+          "object": "organization.costs.result",
+          "amount": {
+            "value": 123.45,
+            "currency": "usd"
+          },
+          "line_item": "GPT-4",
+          "project_id": "proj_abc123"
+        }
+      ]
     }
-  ]
+  ],
+  "has_more": false,
+  "next_page": null
 }
 ```
 
 ### Workflows and Sequencing
 
-**Workflow 1: 일일 비용 수집 (Story 1.2)**
+**Workflow 1: 일일 비용 수집 (Story 1.2) - Costs API Version**
 
 ```
 매일 오전 9시 KST (Vercel Cron)
   → GET /api/cron/daily-batch
   → CRON_SECRET 검증
   → Idempotency 체크 (cron_logs 테이블)
-  → 모든 팀의 API 키 조회 (teams.api_keys)
-  → For each API key:
-      → KMS 복호화
-      → OpenAI API 호출 (전일 데이터)
-      → cost_data 테이블에 저장 (team_id 자동 귀속)
+  → 모든 활성 팀 조회 (teams with organizationApiKey.isActive = true)
+  → For each team:
+      → OrganizationApiKey 조회 및 KMS 복호화
+      → Team의 모든 프로젝트 조회 (where openaiProjectId IS NOT NULL)
+      → OpenAI Project IDs 배열 생성 (Map<openaiProjectId, internalProjectId>)
+      → Costs API 호출:
+          - URL: https://api.openai.com/v1/organization/costs
+          - Params:
+            * start_time: 전일 00:00 (Unix)
+            * end_time: 전일 23:59 (Unix)
+            * bucket_width: 1d
+            * group_by: line_item,project_id
+            * project_ids[]: [proj_abc123, proj_def456, ...]
+            * limit: 180
+          - Pagination: has_more, next_page 처리 (while loop)
+      → Response: CostBucket[] (각 버킷마다 CostResult[] 포함)
+      → For each bucket:
+          → bucketStartTime = new Date(bucket.start_time * 1000)
+          → bucketEndTime = new Date(bucket.end_time * 1000)
+          → For each result:
+              → openai_project_id → internal project_id 매핑
+              → Unknown project ID는 skip (로그 경고)
+              → cost_data 테이블 저장:
+                  * projectId: internalProjectId
+                  * apiVersion: 'costs_v1'
+                  * bucketStartTime, bucketEndTime
+                  * lineItem: result.line_item
+                  * currency: result.amount.currency
+                  * cost: result.amount.value
+                  * date: bucketStartTime (호환성)
+                  * service: lineItem (line_item 값)
+              → skipDuplicates=true (unique_cost_bucket constraint)
+      → Rate limiting: 팀 간 1초 delay
   → Cron log 기록
-  → Success 응답
+  → Success 응답 (recordsCreated count)
 ```
 
 **Workflow 2: 실시간 비용 폭주 방지 (Story 1.4)**
@@ -395,7 +516,7 @@ Response:
   → CRON_SECRET 검증
   → 모든 활성 프로젝트 임계값 조회 (cost_alerts)
   → For each project:
-      → 현재 일일/주간 비용 집계
+      → 현재 일일/주간 비용 집계 (Costs API 데이터만)
       → IF 비용 > 임계값:
           → Slack webhook 호출 (즉시)
           → Resend API 호출 (이메일)
@@ -409,7 +530,7 @@ Response:
 매주 월요일 오전 9시 KST (Vercel Cron)
   → GET /api/cron/weekly-report
   → CRON_SECRET 검증
-  → 지난 7일 비용 데이터 집계
+  → 지난 7일 비용 데이터 집계 (Costs API 데이터)
   → For each team:
       → Efficiency Calculator 실행
           → 비용 대비 성과 계산 (success_count / total_cost)
@@ -440,11 +561,23 @@ Response:
 **Workflow 5: 비용-가치 컨텍스트 기록 (Story 1.3 - Novel Pattern 1)**
 
 ```
+Team Admin이 Admin API Key 등록
+  → Team Settings → "Admin API Key" 입력
+  → tRPC team.registerAdminApiKey 호출
+  → KMS 암호화 후 OrganizationApiKey 테이블 저장
+
 사용자가 프로젝트 생성
   → tRPC project.create 호출
   → Prisma:
       → projects 테이블에 레코드 생성
       → project_metrics 테이블 초기화
+
+프로젝트 Admin이 OpenAI Project ID 등록
+  → Project Settings → "OpenAI Project ID" 입력
+  → tRPC project.registerOpenAIProjectId 호출
+  → Costs API로 유효성 검증 (Admin Key + Project ID)
+  → Prisma:
+      → project.openaiProjectId 업데이트
 
 OpenAI API 호출 (via SDK wrapper)
   → Context Tracker가 메타데이터 추가
@@ -474,7 +607,7 @@ OpenAI API 호출 (via SDK wrapper)
   - Next.js Server-Side Rendering (SSR)
   - React Query 캐싱 (staleTime: 5분)
   - Prisma connection pooling (Neon)
-  - Database 인덱스: `cost_data(team_id, date)`, `cost_data(project_id, date)`
+  - Database 인덱스: `cost_data(team_id, date)`, `cost_data(project_id, date)`, `cost_data(apiVersion)`
 - **측정**: Vercel Analytics + Lighthouse
 - **목표**: LCP <2.5초, FID <100ms, CLS <0.1
 
@@ -496,7 +629,7 @@ OpenAI API 호출 (via SDK wrapper)
   - Data Key: KMS CMK로 보호
   - Encrypted Key + Encrypted Data Key + IV 저장
 - **구현 위치**: `src/lib/services/encryption/kms-envelope.ts`
-- **영향받는 데이터**: `api_keys.encrypted_key`, `api_keys.encrypted_data_key`
+- **영향받는 데이터**: `organization_api_keys.encrypted_key`, `organization_api_keys.encrypted_data_key`
 
 **NFR005: TLS 1.3**
 - **구현**: Vercel 자동 제공
@@ -517,7 +650,7 @@ OpenAI API 호출 (via SDK wrapper)
   - Vercel Edge Network (자동 장애 조치)
   - Neon PostgreSQL (99.95% SLA)
   - Error handling: 모든 tRPC 프로시저에 try-catch
-  - Retry logic: OpenAI API 호출 (3회, exponential backoff)
+  - Retry logic: Costs API 호출 (3회, exponential backoff)
 - **측정**: Vercel Analytics + Sentry uptime
 - **목표**: 월 최대 3.6시간 다운타임 허용
 
@@ -544,6 +677,7 @@ OpenAI API 호출 (via SDK wrapper)
   - Cron job 성공률
   - 알림 발송 성공률
   - API 응답 시간 (P50, P95, P99)
+  - Costs API 수집 성공률 (by team)
 
 **Alerting**:
 - Sentry 이메일 알림 (Production 에러)
@@ -552,7 +686,7 @@ OpenAI API 호출 (via SDK wrapper)
 ## Dependencies and Integrations
 
 **External Services:**
-- OpenAI API (비용 데이터 수집)
+- OpenAI Costs API (비용 데이터 수집)
 - AWS KMS (암호화)
 - Resend (이메일 발송)
 - Slack Webhook (알림)
@@ -620,23 +754,25 @@ OpenAI API 호출 (via SDK wrapper)
 - Vercel ↔ GitHub (CI/CD)
 - Vercel ↔ Neon (Database)
 - Next.js ↔ AWS KMS (Encryption)
-- Cron Jobs ↔ External APIs (OpenAI, Resend, Slack)
+- Cron Jobs ↔ External APIs (OpenAI Costs API, Resend, Slack)
 
 ## Acceptance Criteria (Authoritative)
 
 ### Story 1.1: 프로젝트 인프라 및 기본 인증 구축
-1. ✅ PostgreSQL 데이터베이스가 구축되고, users, projects, api_keys 테이블이 생성되어야 한다
+1. ✅ PostgreSQL 데이터베이스가 구축되고, users, projects, teams, organization_api_keys 테이블이 생성되어야 한다
 2. ✅ 이메일/비밀번호 기반 회원가입 및 로그인 API가 작동해야 한다 (JWT 토큰 발급)
 3. ✅ 기본 웹 UI가 배포되어야 한다 (로그인 페이지, 홈 화면 뼈대)
 4. ✅ HTTPS 연결이 설정되어야 한다 (TLS 1.3, NFR005)
 5. ✅ CI/CD 파이프라인이 구축되어 코드 푸시 시 자동 테스트 및 배포가 되어야 한다
 
-### Story 1.2: OpenAI API 비용 일일 배치 수집 시스템
-1. ✅ 시스템은 매일 오전 9시 KST에 OpenAI API를 호출하여 전일 사용 내역을 가져와야 한다 (FR001)
-2. ✅ 수집된 데이터는 cost_data 테이블에 저장되어야 한다 (날짜, API 키, 모델, 토큰 수, 비용)
-3. ✅ 홈 화면에 "어제 총 비용" 및 "이번 주 총 비용"이 표시되어야 한다
+### Story 1.2: OpenAI Costs API 비용 일일 배치 수집 시스템
+1. ✅ 시스템은 매일 오전 9시 KST에 Costs API를 호출하여 전일 비용 데이터를 가져와야 한다 (FR001, organization-level)
+2. ✅ 수집된 데이터는 cost_data 테이블에 저장되어야 한다 (bucketStartTime, bucketEndTime, lineItem, apiVersion='costs_v1')
+3. ✅ 홈 화면에 "어제 총 비용" 및 "이번 주 총 비용"이 표시되어야 한다 (Costs API 데이터 기준)
 4. ✅ 데이터 수집 실패 시 관리자에게 이메일 알림이 발송되어야 한다
-5. ✅ API 자격증명은 AES-256으로 암호화되어 저장되어야 한다 (NFR004)
+5. ✅ Admin API 자격증명은 AES-256으로 암호화되어 저장되어야 한다 (NFR004, OrganizationApiKey 테이블)
+6. ✅ Pagination 지원 (has_more, next_page 처리)으로 모든 비용 버킷을 수집해야 한다
+7. ✅ openai_project_id → internal project_id 매핑이 정확하게 수행되어야 한다
 
 ### Story 1.3: 비용-가치 컨텍스트 기록 시스템
 1. ✅ 시스템은 API 키 생성 시 프로젝트명을 필수로 입력받아야 한다 (FR007)
@@ -647,7 +783,7 @@ OpenAI API 호출 (via SDK wrapper)
 
 ### Story 1.4: 실시간 비용 임계값 모니터링 및 알림
 1. ✅ 프로젝트 설정 페이지에서 일일/주간 비용 임계값을 설정할 수 있어야 한다 (FR004)
-2. ✅ 시스템은 OpenAI API 비용 데이터를 5분마다 확인하여 임계값 초과 여부를 검사해야 한다
+2. ✅ 시스템은 Costs API 비용 데이터를 5분마다 확인하여 임계값 초과 여부를 검사해야 한다
 3. ✅ 임계값 초과 시 1분 이내에 Slack 및 이메일 알림을 발송해야 한다 (NFR002, FR004)
 4. ✅ 알림 메시지는 "프로젝트명, 현재 비용, 임계값, 초과율"을 포함해야 한다
 5. ✅ 알림 메시지에 "상세 보기" 링크가 포함되어 대시보드로 즉시 이동할 수 있어야 한다
@@ -666,22 +802,24 @@ OpenAI API 호출 (via SDK wrapper)
 4. ✅ 리포트는 이메일로 모든 등록된 사용자에게 발송되어야 한다
 5. ✅ 리포트는 웹 대시보드 "리포트 아카이브" 섹션에도 저장되어야 한다
 
-### Story 1.7: 팀별 API 키 생성 및 자동 귀속
-1. ✅ 시스템은 "팀" 엔티티를 생성할 수 있어야 한다 (팀명, 담당자, 예산)
-2. ✅ 각 팀에 대해 고유한 OpenAI API 키를 생성하고 관리할 수 있어야 한다 (FR007)
-3. ✅ 비용 데이터 수집 시 API 키를 기준으로 팀을 자동 식별해야 한다
-4. ✅ 홈 화면에 "팀별 비용 Top 5" 차트가 표시되어야 한다
-5. ✅ 팀 관리 페이지에서 API 키 생성, 조회, 비활성화를 할 수 있어야 한다
+### Story 1.7: 팀 Admin API 키 등록 및 프로젝트 ID 관리
+1. ✅ Team Settings 페이지에서 OpenAI Organization Admin API Key를 등록할 수 있어야 한다 (FR007)
+2. ✅ Admin API Key는 KMS Envelope Encryption으로 암호화되어 OrganizationApiKey 테이블에 저장되어야 한다
+3. ✅ Project Settings 페이지에서 OpenAI Project ID (proj_xxx)를 등록할 수 있어야 한다
+4. ✅ 시스템은 Project ID가 team의 Admin Key로 접근 가능한지 검증해야 한다 (Costs API 테스트 호출)
+5. ✅ 비용 데이터 수집 시 openai_project_id → internal project_id 매핑으로 자동 귀속되어야 한다
+6. ✅ Team에 Admin API Key가 없으면 Project ID 등록이 불가능해야 한다 (precondition)
+7. ✅ OpenAI Project ID는 unique constraint로 중복 등록이 방지되어야 한다
 
 ### Story 1.8: 긴급 조치용 기본 웹 대시보드
-1. ✅ 홈 화면에 "전일/전주/전월 총 비용" 카드가 표시되어야 한다
+1. ✅ 홈 화면에 "전일/전주/전월 총 비용" 카드가 표시되어야 한다 (Costs API 데이터)
 2. ✅ 홈 화면에 "주요 프로젝트 비용 Top 5" 차트가 표시되어야 한다
 3. ✅ 프로젝트 상세 페이지에 비용 추이 그래프(최근 30일)가 표시되어야 한다
 4. ✅ 프로젝트 상세 페이지에서 임계값 설정 및 API 키 비활성화가 가능해야 한다
 5. ✅ 대시보드 초기 로딩 시간은 3초 이내여야 한다 (NFR001)
 
 ### Story 1.9: Epic 1 통합 테스트 및 검증
-1. ✅ 엔드투엔드 시나리오 테스트가 성공해야 한다 (회원가입 → API 키 생성 → 비용 수집 → 알림 → 비활성화)
+1. ✅ 엔드투엔드 시나리오 테스트가 성공해야 한다 (회원가입 → Admin Key 등록 → Project ID 등록 → 비용 수집 → 알림 → 비활성화)
 2. ✅ 시스템 가동률이 99.5% 이상이어야 한다 (NFR003, 최근 7일 기준)
 3. ✅ 실제 사용자 1개 팀이 파일럿 테스트를 완료하고 피드백을 제공해야 한다
 4. ✅ 모든 보안 요구사항이 충족되어야 한다 (TLS 1.3, AES-256 암호화, NFR004/NFR005)
@@ -696,12 +834,12 @@ OpenAI API 호출 (via SDK wrapper)
 | 1.1.3 | UX Components | Login/Signup Pages | `src/app/(auth)/login/page.tsx` | Playwright E2E |
 | 1.1.4 | Security | Vercel HTTPS | Vercel 자동 | SSL Labs 테스트 |
 | 1.1.5 | Deployment | Vercel CI/CD | `.github/workflows/` | PR → 자동 배포 확인 |
-| 1.2.1 | Workflows | OpenAI Cost Collector | `src/lib/services/openai/cost-collector.ts` | Cron job 수동 트리거 |
-| 1.2.2 | Data Models | CostData | `prisma/schema.prisma` | 데이터 저장 확인 |
-| 1.2.3 | UX Components | StatCard | `src/components/custom/stat-card.tsx` | 비용 표시 확인 |
+| 1.2.1 | Workflows | Cost Collector V2 | `src/lib/services/openai/cost-collector-v2.ts` | Cron job 수동 트리거 |
+| 1.2.2 | Data Models | CostData (Costs API) | `prisma/schema.prisma` | bucketStartTime, lineItem, apiVersion 저장 확인 |
+| 1.2.3 | UX Components | StatCard | `src/components/custom/stat-card.tsx` | Costs API 비용 표시 확인 |
 | 1.2.4 | Services | Notification Service | `src/lib/services/email/` | 실패 시 이메일 발송 |
-| 1.2.5 | Security | KMS Encryption | `src/lib/services/encryption/kms-envelope.ts` | 암호화/복호화 테스트 |
-| 1.3.1 | APIs | teamRouter.generateApiKey | `src/server/api/routers/team.ts` | 프로젝트명 필수 검증 |
+| 1.2.5 | Security | KMS Encryption | `src/lib/services/encryption/kms-envelope.ts` | OrganizationApiKey 암호화/복호화 테스트 |
+| 1.3.1 | APIs | team.registerAdminApiKey | `src/server/api/routers/team.ts` | Admin Key 등록 후 Project ID 등록 |
 | 1.3.2 | Data Models | CostData (task_type, user_intent) | `prisma/schema.prisma` | 컨텍스트 저장 확인 |
 | 1.3.3 | UX Components | CostChart | `src/components/custom/cost-chart.tsx` | 작업 유형별 차트 |
 | 1.3.4 | APIs | projectRouter.updateMetrics | `src/server/api/routers/project.ts` | 성과 메트릭 입력 |
@@ -721,17 +859,17 @@ OpenAI API 호출 (via SDK wrapper)
 | 1.6.3 | Services | Report Generator | `src/lib/services/reporting/` | 메트릭 계산 |
 | 1.6.4 | Services | Email Service | `src/lib/services/email/templates/` | React Email 발송 |
 | 1.6.5 | UX | Report Archive | `src/app/(dashboard)/reports/page.tsx` | 저장된 리포트 조회 |
-| 1.7.1 | APIs | teamRouter.create | `src/server/api/routers/team.ts` | 팀 생성 |
-| 1.7.2 | Services | API Key Manager | `src/lib/services/encryption/api-key-manager.ts` | KMS 암호화 + 저장 |
-| 1.7.3 | Workflows | Cost Collector | `src/lib/services/openai/cost-collector.ts` | API 키 → 팀 매핑 |
+| 1.7.1 | APIs | teamRouter.registerAdminApiKey | `src/server/api/routers/team.ts` | Team Admin API Key 등록 |
+| 1.7.2 | Services | Admin API Key Manager + Project ID Validator | `src/lib/services/encryption/api-key-manager.ts` | KMS 암호화 + Project ID 검증 |
+| 1.7.3 | Workflows | Costs API v2 Collector (project_ids filtering) | `src/lib/services/openai/cost-collector-v2.ts` | Admin Key → Costs API → project_ids 매핑 |
 | 1.7.4 | UX Components | CostChart | `src/components/custom/cost-chart.tsx` | 팀별 비용 차트 |
-| 1.7.5 | UX | Team Management Page | `src/app/(dashboard)/teams/page.tsx` | API 키 CRUD |
-| 1.8.1 | UX Components | StatCard | `src/components/custom/stat-card.tsx` | 비용 카드 3개 |
+| 1.7.5 | UX | Team Settings (Admin Key), Project Settings (Project ID) | `src/app/(dashboard)/teams/[id]/settings/`, `src/app/(dashboard)/projects/[id]/settings/` | Admin Key 등록 → Project ID 등록 flow |
+| 1.8.1 | UX Components | StatCard | `src/components/custom/stat-card.tsx` | 비용 카드 3개 (Costs API) |
 | 1.8.2 | UX Components | CostChart | `src/components/custom/cost-chart.tsx` | Top 5 차트 |
 | 1.8.3 | UX Components | CostChart | `src/components/custom/cost-chart.tsx` | 30일 추이 그래프 |
 | 1.8.4 | UX | Project Detail Page | `src/app/(dashboard)/projects/[id]/page.tsx` | 임계값 + 비활성화 UI |
 | 1.8.5 | Performance | Next.js SSR + Caching | Vercel Analytics | Lighthouse 성능 테스트 |
-| 1.9.1 | Testing | Playwright E2E | `__tests__/e2e/user-journey.spec.ts` | 전체 시나리오 자동화 |
+| 1.9.1 | Testing | Playwright E2E | `__tests__/e2e/user-journey.spec.ts` | 전체 시나리오 자동화 (Admin Key → Project ID → Costs API) |
 | 1.9.2 | Monitoring | Vercel Analytics | Vercel Dashboard | 7일 가동률 확인 |
 | 1.9.3 | Testing | Pilot User | Manual | 사용자 피드백 수집 |
 | 1.9.4 | Security | Security Checklist | Multiple | TLS, KMS, bcrypt 검증 |
@@ -741,17 +879,18 @@ OpenAI API 호출 (via SDK wrapper)
 
 ### Risks
 
-**Risk 1: OpenAI API 사용량 데이터 지연 (8-24시간)**
-- **설명**: OpenAI Usage API는 실시간이 아니며, 데이터가 8-24시간 지연될 수 있음
+**Risk 1: Costs API 데이터 지연 (8-24시간) 및 집계 수준**
+- **설명**: Costs API는 실시간이 아니며, 데이터가 8-24시간 지연될 수 있음. 또한 line_item 집계로 인해 모델별 세부 데이터 손실 가능
 - **영향**: Story 1.2, 1.4 - 실시간 알림이 실제로는 지연될 수 있음
 - **완화**:
   - PRD에 명시된 대로 "일일 배치" 수집으로 설계
   - 5분 폴링은 이미 수집된 데이터 기반 임계값 체크
   - 사용자에게 데이터 지연 명시 (UI에 "마지막 업데이트" 표시)
+  - line_item 집계로 인한 세부 데이터 손실은 향후 Usage API 병행 수집으로 보완 가능
 
 **Risk 2: AWS KMS API 비용 및 지연**
 - **설명**: KMS 복호화 호출마다 비용 발생 ($0.03/10,000 requests)
-- **영향**: Story 1.2 - 일일 배치에서 모든 API 키 복호화 시 비용
+- **영향**: Story 1.2 - 일일 배치에서 모든 Admin Key 복호화 시 비용
 - **완화**:
   - 복호화된 키를 메모리에 캐싱 (Cron job 실행 중)
   - 월 예상 비용: 팀 100개 × 30일 = 3,000 calls = $0.01/월 (무시 가능)
@@ -772,11 +911,20 @@ OpenAI API 호출 (via SDK wrapper)
   - Prisma connection pooling
   - React Query 캐싱으로 재요청 방지
 
+**Risk 5: OpenAI Project ID 변경 또는 삭제**
+- **설명**: 사용자가 OpenAI Dashboard에서 Project ID를 변경하거나 삭제하면 비용 수집 실패
+- **영향**: Story 1.2, 1.7 - 해당 프로젝트 비용 데이터 누락
+- **완화**:
+  - Costs API 호출 실패 시 Sentry 알림
+  - UI에 "Project ID 유효성 재검증" 버튼 제공
+  - 에러 발생 프로젝트 자동 비활성화 (관리자 확인 후 재활성화)
+  - Unknown Project ID는 로그 경고 후 skip (시스템 중단 방지)
+
 ### Assumptions
 
 **Assumption 1: OpenAI API 키는 팀당 1개만 사용**
-- **근거**: Novel Pattern 2 (아키텍처 기반 귀속)
-- **검증**: Story 1.7 구현 시 UI에서 강제
+- **근거**: Novel Pattern 2 (Team-level Admin Key)
+- **검증**: Story 1.7 구현 시 UI에서 강제 (OrganizationApiKey unique constraint)
 
 **Assumption 2: 사용자는 Chrome/Safari/Edge 최신 버전 사용**
 - **근거**: UX Design - Browser Support 명시
@@ -789,6 +937,10 @@ OpenAI API 호출 (via SDK wrapper)
 **Assumption 4: Phase 1은 Vercel Pro plan 사용**
 - **근거**: Cron Jobs 필요 (Hobby는 2개 cron, 1일 1회만)
 - **검증**: vercel.json에 3개 cron 정의
+
+**Assumption 5: Team은 Organization Admin API Key 1개만 사용**
+- **근거**: OrganizationApiKey 모델 unique constraint (teamId)
+- **검증**: Team Settings UI에서 1:1 관계 강제
 
 ### Open Questions
 
@@ -831,22 +983,24 @@ OpenAI API 호출 (via SDK wrapper)
 - **대상**: 모든 서비스, 유틸리티, Novel Patterns
 - **커버리지**: 80% 이상
 - **예시**:
-  - `kms-envelope.ts`: 암호화/복호화
+  - `kms-envelope.ts`: 암호화/복호화 (OrganizationApiKey)
   - `efficiency.ts`: 비용 대비 성과 계산
-  - `cost-collector.ts`: OpenAI API 파싱
+  - `cost-collector-v2.ts`: Costs API 파싱 및 pagination
 
 **Integration Tests (Vitest + MSW)**
 - **대상**: tRPC 프로시저, Prisma 쿼리
 - **예시**:
   - `authRouter.signup`: 사용자 생성 + JWT 발급
+  - `teamRouter.registerAdminApiKey`: Admin Key KMS 암호화 + 저장
+  - `projectRouter.registerOpenAIProjectId`: Project ID 등록 + 검증
   - `costRouter.disableApiKey`: API 키 비활성화 + audit log
 
 **E2E Tests (Playwright)**
 - **대상**: 3가지 핵심 사용자 여정
 - **시나리오**:
-  1. 비용 급증 감지 및 즉시 대응 (Story 1.4, 1.5)
-  2. 주간 리포트 확인 (Story 1.6, 1.8)
-  3. 프로젝트별 비용 드릴다운 (Story 1.3, 1.8)
+  1. Admin Key 등록 → Project ID 등록 → Costs API 수집 → 대시보드 확인 (Story 1.2, 1.7, 1.8)
+  2. 비용 급증 감지 및 즉시 대응 (Story 1.4, 1.5)
+  3. 주간 리포트 확인 (Story 1.6, 1.8)
 
 **Accessibility Tests (jest-axe)**
 - **대상**: 모든 주요 화면
@@ -859,8 +1013,10 @@ OpenAI API 호출 (via SDK wrapper)
 - Traceability Mapping 테이블 참조
 
 **Edge Cases:**
-- API 키 복호화 실패 (KMS 오류)
-- OpenAI API 응답 지연/타임아웃
+- Admin Key 복호화 실패 (KMS 오류)
+- Costs API 응답 지연/타임아웃
+- Costs API pagination 실패
+- OpenAI Project ID 매핑 실패 (unknown project_id)
 - Database connection pool 소진
 - Cron job 동시 실행 (Idempotency)
 
@@ -868,6 +1024,7 @@ OpenAI API 호출 (via SDK wrapper)
 - Lighthouse CI (모든 PR)
 - Load testing (K6): 동시 사용자 100명
 - Database query 성능 (EXPLAIN ANALYZE)
+- Costs API pagination 성능 (180 buckets)
 
 ### Test Frameworks
 
@@ -927,6 +1084,7 @@ GitHub PR → Vercel Preview Deploy
 ---
 
 _Epic 1 Technical Specification Generated by BMAD BMM Workflow v6_
-_Date: 2025-11-01_
+_Date: 2025-01-04 (Costs API Migration Complete Rewrite)_
+_Original Date: 2025-11-01_
 _For: Issac_
 _Project: finops-for-ai (Level 2)_
