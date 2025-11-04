@@ -160,15 +160,18 @@ export default function ProjectSettingsPage() {
 
 			{/* Setup Progress Banner */}
 			{!hasAnyAdminKeys && (
-				<Alert variant="default" className="border-amber-200 bg-amber-50">
-					<AlertCircle className="h-4 w-4 text-amber-600" />
+				<Alert
+					variant="default"
+					className="border-destructive/50 bg-destructive/10"
+				>
+					<AlertCircle className="h-4 w-4 text-destructive" />
 					<AlertDescription>
 						<div className="flex items-center justify-between">
 							<div>
-								<p className="font-medium text-amber-900 text-sm">
+								<p className="font-medium text-foreground text-sm">
 									Setup Required: Team Admin API Key
 								</p>
-								<p className="text-amber-700 text-xs">
+								<p className="text-muted-foreground text-xs">
 									Before linking this project to an AI provider, your team needs
 									to register an Admin API Key in Team Settings.
 								</p>
@@ -179,7 +182,7 @@ export default function ProjectSettingsPage() {
 								onClick={() => {
 									router.push(`/teams/${project?.teamId}/settings`);
 								}}
-								className="border-amber-300 hover:bg-amber-100"
+								className="border-destructive/50 hover:bg-destructive/20"
 							>
 								Go to Team Settings
 							</Button>
@@ -189,8 +192,8 @@ export default function ProjectSettingsPage() {
 			)}
 
 			{hasAnyAdminKeys && !isProviderLinked && (
-				<Alert variant="default" className="border-info bg-info/10">
-					<Settings2 className="h-4 w-4 text-info" />
+				<Alert variant="default" className="border-primary bg-primary/10">
+					<Settings2 className="h-4 w-4 text-primary" />
 					<AlertDescription>
 						<div>
 							<p className="font-medium text-foreground text-sm">
@@ -247,7 +250,7 @@ export default function ProjectSettingsPage() {
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2 text-base">
-							<BookOpen className="h-5 w-5 text-info" />
+							<BookOpen className="h-5 w-5 text-primary" />
 							Setup Guide: Register AI Project ID
 						</CardTitle>
 					</CardHeader>
