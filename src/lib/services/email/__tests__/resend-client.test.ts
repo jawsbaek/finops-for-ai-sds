@@ -4,7 +4,9 @@
  * Tests sendCostAlertEmail template rendering, Resend API integration, and retry logic
  */
 
-// Mock dependencies
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+// Mock dependencies - vi is available globally due to globals: true in vitest.config.ts
 vi.mock("~/env", () => ({
 	env: {
 		RESEND_API_KEY: "re_test_key_123",
@@ -42,7 +44,6 @@ vi.mock("resend", () => {
 
 import { render } from "@react-email/components";
 import { Resend } from "resend";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { env } from "~/env";
 import {
 	type SendCostAlertEmailParams,

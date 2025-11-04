@@ -32,6 +32,7 @@ export default defineConfig({
 				"**/*.config.*",
 				"**/*.setup.*",
 				"**/types/**",
+				"src/components/ui/**", // shadcn/ui components - excluded from coverage
 			],
 		},
 	},
