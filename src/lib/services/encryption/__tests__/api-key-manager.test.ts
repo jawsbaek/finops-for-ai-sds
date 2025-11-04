@@ -90,6 +90,18 @@ describe("API Key Manager - validateApiKey", () => {
 					false,
 				);
 			});
+
+			it("should reject keys exceeding maximum length (256 chars)", () => {
+				// Create a key with 257 chars after "sk-"
+				const tooLongKey = `sk-${"a".repeat(257)}`;
+				expect(validateApiKey(tooLongKey, "openai")).toBe(false);
+			});
+
+			it("should accept keys at exactly maximum length (256 chars)", () => {
+				// Create a key with exactly 256 chars after "sk-"
+				const maxLengthKey = `sk-${"a".repeat(256)}`;
+				expect(validateApiKey(maxLengthKey, "openai")).toBe(true);
+			});
 		});
 	});
 

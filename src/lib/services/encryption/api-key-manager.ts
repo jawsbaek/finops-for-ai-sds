@@ -44,10 +44,11 @@ export function validateApiKey(
 			// - Other variants: sk-{prefix}-{alphanumeric chars}
 			//
 			// Pattern breakdown:
-			// ^sk-                 : Must start with "sk-"
-			// [a-zA-Z0-9_-]{20,}   : At least 20 chars of alphanumeric, underscores, or hyphens
-			// $                    : End of string
-			return /^sk-[a-zA-Z0-9_-]{20,}$/.test(apiKey);
+			// ^sk-                   : Must start with "sk-"
+			// [a-zA-Z0-9_-]{20,256}  : 20-256 chars of alphanumeric, underscores, or hyphens
+			//                          (max length prevents DoS via extremely long strings)
+			// $                      : End of string
+			return /^sk-[a-zA-Z0-9_-]{20,256}$/.test(apiKey);
 
 		case "aws":
 			// AWS access keys: AKIA[20 alphanumeric chars]

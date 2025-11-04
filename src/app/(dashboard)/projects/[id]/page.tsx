@@ -125,12 +125,15 @@ export default function ProjectDetailPage() {
 
 	// Generate API key mutation
 	const generateApiKey = api.project.generateApiKey.useMutation({
+		onMutate: () => {
+			// Clear previous error before mutation starts (prevents race conditions)
+			setApiKeyServerError(undefined);
+		},
 		onSuccess: () => {
 			toast.success("API 키가 추가되었습니다", {
 				description: "API 키가 안전하게 암호화되어 저장되었습니다",
 			});
 			setAddApiKeyDialogOpen(false);
-			setApiKeyServerError(undefined);
 			void utils.project.getById.invalidate({ id: projectId });
 		},
 		onError: (error) => {
@@ -254,8 +257,6 @@ export default function ProjectDetailPage() {
 
 	// Handle add API key
 	const handleAddApiKey = (provider: "openai", apiKey: string) => {
-		// Clear previous server error
-		setApiKeyServerError(undefined);
 		generateApiKey.mutate({
 			projectId,
 			provider,
