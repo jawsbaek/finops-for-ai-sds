@@ -116,6 +116,7 @@ async function fetchOpenAICosts(
 			Authorization: `Bearer ${adminApiKey}`,
 			"Content-Type": "application/json",
 		},
+		signal: AbortSignal.timeout(10000), // 10 second timeout
 	});
 
 	if (!response.ok) {
@@ -146,8 +147,12 @@ async function fetchOpenAICostsComplete(
 	const allBuckets: CostBucket[] = [];
 	let currentPage: string | undefined;
 	let hasMore = true;
+	let pageCount = 0;
+	const MAX_PAGES = 100; // Safety limit to prevent infinite loops
 
-	while (hasMore) {
+	while (hasMore && pageCount < MAX_PAGES) {
+		pageCount++;
+
 		const response = await retryWithBackoff(
 			() =>
 				fetchOpenAICosts(
@@ -168,6 +173,7 @@ async function fetchOpenAICostsComplete(
 				bucketsInPage: response.data.length,
 				totalBuckets: allBuckets.length,
 				hasMore: response.has_more,
+				pageCount,
 			},
 			"Fetched OpenAI costs page",
 		);
@@ -177,6 +183,13 @@ async function fetchOpenAICostsComplete(
 		} else {
 			hasMore = false;
 		}
+	}
+
+	if (pageCount >= MAX_PAGES) {
+		logger.warn(
+			{ pageCount, totalBuckets: allBuckets.length },
+			"Hit maximum page limit for cost collection",
+		);
 	}
 
 	return allBuckets;

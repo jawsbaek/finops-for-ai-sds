@@ -226,6 +226,7 @@ model CostData {
   @@unique([projectId, bucketStartTime, bucketEndTime, lineItem, apiVersion], name: "unique_cost_bucket")
   @@unique([apiKeyId, date, snapshotId], name: "unique_usage_snapshot") // Legacy Usage API
   @@index([projectId, date])
+  @@index([date]) // For aggregations across projects
   @@index([apiVersion]) // Query optimization for API version filtering
   @@map("cost_data")
 }
