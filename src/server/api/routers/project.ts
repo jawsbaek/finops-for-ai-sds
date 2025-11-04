@@ -26,6 +26,11 @@ import {
 	encryptApiKey,
 	validateApiKey,
 } from "~/lib/services/encryption/api-key-manager";
+import { getKMSEncryption } from "~/lib/services/encryption/kms-envelope";
+import {
+	validateProviderProjectId,
+	validateProviderProjectIdFormat,
+} from "~/lib/services/providers/validation";
 import {
 	createTRPCRouter,
 	protectedProcedure,
@@ -1038,6 +1043,365 @@ export const projectRouter = createTRPCRouter({
 					wasActive: apiKey.isActive,
 				},
 				"API key deleted",
+			);
+
+			return { success: true };
+		}),
+
+	/**
+	 * Register AI provider configuration for a project
+	 * Validates project ID in real-time via provider API
+	 */
+	registerAIProvider: protectedProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+				provider: z.enum(["openai", "anthropic", "aws", "azure"]),
+				organizationId: z.string(),
+				aiProjectId: z.string().min(1), // Provider's project identifier
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const userId = ctx.session.user.id;
+
+			// 1. Verify project access (project member OR team admin)
+			const project = await ctx.db.project.findUnique({
+				where: { id: input.projectId },
+				include: {
+					members: {
+						where: { userId },
+					},
+					team: {
+						include: {
+							members: {
+								where: {
+									userId,
+									role: { in: ["owner", "admin"] },
+								},
+							},
+						},
+					},
+				},
+			});
+
+			if (!project) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Project not found",
+				});
+			}
+
+			const isProjectMember = project.members.length > 0;
+			const isTeamAdmin = project.team.members.length > 0;
+
+			if (!isProjectMember && !isTeamAdmin) {
+				throw new TRPCError({
+					code: "FORBIDDEN",
+					message: "You do not have access to this project",
+				});
+			}
+
+			// 2. Verify team has Admin API Key for this provider + organization
+			const adminKey = await ctx.db.organizationApiKey.findUnique({
+				where: {
+					unique_team_provider_org: {
+						teamId: project.teamId,
+						provider: input.provider,
+						organizationId: input.organizationId,
+					},
+				},
+			});
+
+			if (!adminKey || !adminKey.isActive) {
+				throw new TRPCError({
+					code: "PRECONDITION_FAILED",
+					message: `Team must have an active Admin API Key for ${input.provider} (${input.organizationId})`,
+				});
+			}
+
+			// 3. Validate project ID format
+			const isValidFormat = validateProviderProjectIdFormat(
+				input.provider,
+				input.aiProjectId,
+			);
+
+			if (!isValidFormat) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: `Invalid ${input.provider} project ID format`,
+				});
+			}
+
+			// 4. Check for duplicate
+			const existingProject = await ctx.db.project.findFirst({
+				where: {
+					aiProvider: input.provider,
+					aiOrganizationId: input.organizationId,
+					aiProjectId: input.aiProjectId,
+					id: { not: input.projectId },
+				},
+			});
+
+			if (existingProject) {
+				throw new TRPCError({
+					code: "CONFLICT",
+					message: `This ${input.provider} project ID is already registered to another project`,
+				});
+			}
+
+			// 5. Real-time validation via provider API
+			const decryptedKey = await getKMSEncryption().decrypt(
+				adminKey.encryptedKey,
+				adminKey.encryptedDataKey,
+				adminKey.iv,
+			);
+
+			const validationResult = await validateProviderProjectId(
+				input.provider,
+				decryptedKey,
+				input.organizationId,
+				input.aiProjectId,
+			);
+
+			if (!validationResult.valid) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: validationResult.error ?? "Project ID validation failed",
+				});
+			}
+
+			// 6. Update project
+			const updatedProject = await ctx.db.project.update({
+				where: { id: input.projectId },
+				data: {
+					aiProvider: input.provider,
+					aiOrganizationId: input.organizationId,
+					aiProjectId: input.aiProjectId,
+				},
+			});
+
+			// 7. Audit log
+			await ctx.db.auditLog.create({
+				data: {
+					userId,
+					actionType: "ai_provider_registered",
+					resourceType: "project",
+					resourceId: updatedProject.id,
+					metadata: {
+						provider: input.provider,
+						organizationId: input.organizationId,
+						aiProjectId: input.aiProjectId,
+						teamId: project.teamId,
+					},
+				},
+			});
+
+			logger.info(
+				{
+					projectId: updatedProject.id,
+					provider: input.provider,
+					organizationId: input.organizationId,
+					aiProjectId: input.aiProjectId,
+					userId,
+				},
+				"AI provider registered for project",
+			);
+
+			return {
+				success: true,
+				projectId: updatedProject.id,
+				provider: input.provider,
+				organizationId: input.organizationId,
+				aiProjectId: updatedProject.aiProjectId,
+			};
+		}),
+
+	/**
+	 * Validate AI Project ID
+	 * Validates the project ID with the provider's API using the admin key
+	 */
+	validateAIProjectId: protectedProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+				provider: z.enum(["openai", "anthropic", "aws", "azure"]),
+				organizationId: z.string(),
+				aiProjectId: z.string(),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const userId = ctx.session.user.id;
+
+			// 1. Verify project access (project member OR team admin)
+			const project = await ctx.db.project.findUnique({
+				where: { id: input.projectId },
+				include: {
+					members: {
+						where: { userId },
+					},
+					team: {
+						include: {
+							members: {
+								where: {
+									userId,
+									role: { in: ["owner", "admin"] },
+								},
+							},
+						},
+					},
+				},
+			});
+
+			if (!project) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Project not found",
+				});
+			}
+
+			const isProjectMember = project.members.length > 0;
+			const isTeamAdmin = project.team.members.length > 0;
+
+			if (!isProjectMember && !isTeamAdmin) {
+				throw new TRPCError({
+					code: "FORBIDDEN",
+					message: "You do not have access to this project",
+				});
+			}
+
+			// 2. Get admin key for this provider/org
+			const adminKey = await ctx.db.organizationApiKey.findFirst({
+				where: {
+					teamId: project.teamId,
+					provider: input.provider,
+					organizationId: input.organizationId,
+				},
+			});
+
+			if (!adminKey || !adminKey.isActive) {
+				return {
+					valid: false,
+					error: "No active admin key found for this provider and organization",
+				};
+			}
+
+			// 3. Decrypt admin key
+			const { decryptApiKey } = await import(
+				"~/lib/services/encryption/api-key-manager"
+			);
+			const decryptedKey = await decryptApiKey(
+				adminKey.encryptedKey,
+				adminKey.encryptedDataKey,
+				adminKey.iv,
+			);
+
+			// 4. Validate project ID with provider API
+			const { validateProviderProjectId } = await import(
+				"~/lib/services/providers/validation"
+			);
+			const validation = await validateProviderProjectId(
+				input.provider,
+				decryptedKey,
+				input.organizationId,
+				input.aiProjectId,
+			);
+
+			logger.info(
+				{
+					projectId: input.projectId,
+					provider: input.provider,
+					organizationId: input.organizationId,
+					valid: validation.valid,
+					userId,
+				},
+				"AI project ID validation completed",
+			);
+
+			return validation;
+		}),
+
+	/**
+	 * Unlink AI Provider from Project
+	 * Clears aiProvider, aiOrganizationId, aiProjectId fields
+	 */
+	unlinkAIProvider: protectedProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const userId = ctx.session.user.id;
+
+			// 1. Verify project access (project member OR team admin)
+			const project = await ctx.db.project.findUnique({
+				where: { id: input.projectId },
+				include: {
+					members: {
+						where: { userId },
+					},
+					team: {
+						include: {
+							members: {
+								where: {
+									userId,
+									role: { in: ["owner", "admin"] },
+								},
+							},
+						},
+					},
+				},
+			});
+
+			if (!project) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Project not found",
+				});
+			}
+
+			const isProjectMember = project.members.length > 0;
+			const isTeamAdmin = project.team.members.length > 0;
+
+			if (!isProjectMember && !isTeamAdmin) {
+				throw new TRPCError({
+					code: "FORBIDDEN",
+					message: "You do not have access to this project",
+				});
+			}
+
+			// 2. Clear provider fields
+			const updated = await ctx.db.project.update({
+				where: { id: input.projectId },
+				data: {
+					aiProvider: null,
+					aiOrganizationId: null,
+					aiProjectId: null,
+				},
+			});
+
+			// 3. Audit log
+			await ctx.db.auditLog.create({
+				data: {
+					userId,
+					actionType: "ai_provider_unlinked",
+					resourceType: "project",
+					resourceId: input.projectId,
+					metadata: {
+						previousProvider: project.aiProvider,
+						previousOrgId: project.aiOrganizationId,
+						previousProjectId: project.aiProjectId,
+					},
+				},
+			});
+
+			logger.info(
+				{
+					projectId: updated.id,
+					previousProvider: project.aiProvider,
+					userId,
+				},
+				"AI provider unlinked from project",
 			);
 
 			return { success: true };
