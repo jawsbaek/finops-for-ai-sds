@@ -31,8 +31,8 @@ export default function TeamSettingsPage() {
 
 			{/* Quick Status Banner */}
 			{!hasActiveKeys && (
-				<Alert variant="default" className="border-info bg-info/10">
-					<AlertCircle className="h-4 w-4 text-info" />
+				<Alert variant="default" className="border-primary bg-primary/10">
+					<AlertCircle className="h-4 w-4 text-primary" />
 					<AlertDescription>
 						<div className="flex items-center justify-between">
 							<div>
@@ -52,7 +52,7 @@ export default function TeamSettingsPage() {
 										.getElementById("admin-key-registration")
 										?.scrollIntoView({ behavior: "smooth" });
 								}}
-								className="border-info hover:bg-info/20"
+								className="border-primary hover:bg-primary/20"
 							>
 								Get Started
 							</Button>
@@ -108,7 +108,7 @@ export default function TeamSettingsPage() {
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2 text-base">
-							<Shield className="h-5 w-5 text-success" />
+							<Shield className="h-5 w-5 text-primary" />
 							Security & Compliance
 						</CardTitle>
 					</CardHeader>
@@ -144,7 +144,7 @@ export default function TeamSettingsPage() {
 			<Card>
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2 text-base">
-						<BookOpen className="h-5 w-5 text-info" />
+						<BookOpen className="h-5 w-5 text-primary" />
 						Setup Guide: OpenAI Admin API Key
 					</CardTitle>
 				</CardHeader>

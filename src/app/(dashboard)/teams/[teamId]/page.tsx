@@ -180,9 +180,9 @@ export default function TeamDetailPage() {
 						</div>
 						<p className="text-muted-foreground text-xs">
 							{hasActiveAdminKeys ? (
-								<span className="text-success">Active</span>
+								<span className="text-primary">Active</span>
 							) : (
-								<span className="text-warning">Setup required</span>
+								<span className="text-destructive">Setup required</span>
 							)}
 						</p>
 					</CardContent>
