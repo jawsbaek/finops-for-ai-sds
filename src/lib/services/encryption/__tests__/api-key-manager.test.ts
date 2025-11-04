@@ -102,6 +102,26 @@ describe("API Key Manager - validateApiKey", () => {
 				const maxLengthKey = `sk-${"a".repeat(256)}`;
 				expect(validateApiKey(maxLengthKey, "openai")).toBe(true);
 			});
+
+			it("should reject keys composed entirely of underscores", () => {
+				const underscoreKey = `sk-${"_".repeat(20)}`;
+				expect(validateApiKey(underscoreKey, "openai")).toBe(false);
+			});
+
+			it("should reject keys composed entirely of hyphens", () => {
+				const hyphenKey = `sk-${"-".repeat(20)}`;
+				expect(validateApiKey(hyphenKey, "openai")).toBe(false);
+			});
+
+			it("should reject keys with only underscores and hyphens", () => {
+				const mixedKey = `sk-${"_-".repeat(10)}`;
+				expect(validateApiKey(mixedKey, "openai")).toBe(false);
+			});
+
+			it("should accept keys with at least one alphanumeric character", () => {
+				const validKey = `sk-${"_".repeat(10)}a${"_".repeat(9)}`;
+				expect(validateApiKey(validKey, "openai")).toBe(true);
+			});
 		});
 	});
 

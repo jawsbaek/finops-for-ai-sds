@@ -44,11 +44,15 @@ export function validateApiKey(
 			// - Other variants: sk-{prefix}-{alphanumeric chars}
 			//
 			// Pattern breakdown:
-			// ^sk-                   : Must start with "sk-"
-			// [a-zA-Z0-9_-]{20,256}  : 20-256 chars of alphanumeric, underscores, or hyphens
-			//                          (max length prevents DoS via extremely long strings)
-			// $                      : End of string
-			return /^sk-[a-zA-Z0-9_-]{20,256}$/.test(apiKey);
+			// ^sk-                              : Must start with "sk-"
+			// (?=.*[a-zA-Z0-9])                 : Positive lookahead: must contain at least one alphanumeric
+			// [a-zA-Z0-9_-]{20,256}             : 20-256 chars of alphanumeric, underscores, or hyphens
+			//                                     (max length prevents DoS via extremely long strings)
+			// $                                 : End of string
+			//
+			// Note: The lookahead prevents keys composed entirely of underscores/hyphens
+			// while still allowing flexible patterns for various OpenAI key formats
+			return /^sk-(?=.*[a-zA-Z0-9])[a-zA-Z0-9_-]{20,256}$/.test(apiKey);
 
 		case "aws":
 			// AWS access keys: AKIA[20 alphanumeric chars]

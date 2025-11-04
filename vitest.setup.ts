@@ -1,4 +1,5 @@
 import { beforeAll, vi } from "vitest";
+import "@testing-library/jest-dom/vitest";
 
 // Mock environment variables for tests
 beforeAll(() => {
@@ -16,4 +17,13 @@ vi.mock("pino", () => ({
 		error: vi.fn(),
 		debug: vi.fn(),
 	}),
+}));
+
+// Mock next-auth to avoid module resolution issues
+vi.mock("next-auth", () => ({
+	default: vi.fn(),
+}));
+
+vi.mock("next-auth/next", () => ({
+	default: vi.fn(),
 }));
