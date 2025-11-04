@@ -3,6 +3,7 @@
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 import { z } from "zod";
 import { api } from "~/trpc/react";
 
@@ -34,16 +35,27 @@ export default function SignupPage() {
 			});
 
 			if (response?.ok) {
+				toast.success("회원가입 성공!", {
+					description: "대시보드로 이동합니다.",
+				});
 				router.push("/dashboard");
 			} else {
+				const errorMsg =
+					"Account created but login failed. Please try logging in manually.";
 				setErrors({
-					general:
-						"Account created but login failed. Please try logging in manually.",
+					general: errorMsg,
+				});
+				toast.error("자동 로그인 실패", {
+					description: errorMsg,
 				});
 			}
 		},
 		onError: (error) => {
-			setErrors({ general: error.message || "Failed to create account" });
+			const errorMsg = error.message || "Failed to create account";
+			setErrors({ general: errorMsg });
+			toast.error("회원가입 실패", {
+				description: errorMsg,
+			});
 		},
 	});
 

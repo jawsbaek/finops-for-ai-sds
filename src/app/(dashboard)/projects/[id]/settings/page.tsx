@@ -18,16 +18,15 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { useToast } from "@/hooks/use-toast";
 import { Bell, Trash2 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 import { api } from "~/trpc/react";
 
 export default function ProjectSettingsPage() {
 	const params = useParams();
 	const projectId = params.id as string;
-	const { toast } = useToast();
 
 	// Form state
 	const [thresholdType, setThresholdType] = useState<"daily" | "weekly">(
@@ -45,35 +44,29 @@ export default function ProjectSettingsPage() {
 	// Mutations
 	const setThresholdMutation = api.alert.setThreshold.useMutation({
 		onSuccess: () => {
-			toast({
-				title: "임계값 설정 완료",
+			toast.success("임계값 설정 완료", {
 				description: "비용 임계값이 성공적으로 설정되었습니다.",
 			});
 			setThresholdValue("");
 			void refetchAlerts();
 		},
 		onError: (error) => {
-			toast({
-				title: "설정 실패",
+			toast.error("설정 실패", {
 				description: error.message,
-				variant: "destructive",
 			});
 		},
 	});
 
 	const deleteAlertMutation = api.alert.deleteAlert.useMutation({
 		onSuccess: () => {
-			toast({
-				title: "알림 삭제 완료",
+			toast.success("알림 삭제 완료", {
 				description: "비용 알림이 성공적으로 삭제되었습니다.",
 			});
 			void refetchAlerts();
 		},
 		onError: (error) => {
-			toast({
-				title: "삭제 실패",
+			toast.error("삭제 실패", {
 				description: error.message,
-				variant: "destructive",
 			});
 		},
 	});
@@ -83,10 +76,8 @@ export default function ProjectSettingsPage() {
 
 		const value = Number.parseFloat(thresholdValue);
 		if (Number.isNaN(value) || value <= 0) {
-			toast({
-				title: "유효하지 않은 값",
+			toast.error("유효하지 않은 값", {
 				description: "0보다 큰 숫자를 입력해주세요.",
-				variant: "destructive",
 			});
 			return;
 		}
