@@ -2,8 +2,11 @@
 
 **Author:** Issac
 **Date:** 2025-10-31
+**Updated:** 2025-01-04 (Costs API Migration)
 **Project Level:** 2
 **Target Scale:** MVP - AI Cost Management Platform
+
+> **🔄 MIGRATION NOTE:** This document has been updated to reflect the OpenAI Costs API migration. The system now uses team-level Admin API Keys and Project ID filtering instead of project-level API keys. See [BREAKING_CHANGES.md](./migration/BREAKING_CHANGES.md) for details.
 
 ---
 
@@ -42,19 +45,24 @@ AI 도입이 가속화되면서 조직들은 전례 없는 비용 관리 위기�
 **가설**: "비용-가치 연결이 실제 의사결정을 개선하는가?"
 
 **비용-가치 통합 추적 (Cost-Value Integration)**
-- FR001: 시스템은 OpenAI API 사용량을 일일 배치(매일 오전 9시 KST)로 수집하고 전일 총 비용을 표시해야 한다
+- FR001: 시스템은 **OpenAI Costs API**를 통해 organization 비용 데이터를 일일 배치(매일 오전 9시 KST)로 수집하고 전일 총 비용을 표시해야 한다
+  - ※ Costs API는 organization-level 집계 데이터를 제공하며, 8-24시간 지연이 발생할 수 있음
 - FR002: 시스템은 각 API 호출에 대해 비용과 함께 컨텍스트(프로젝트명, 작업 유형, 사용자 의도)를 기록해야 한다
 - FR003: 시스템은 프로젝트/실험별로 "총 비용" 및 "비용 대비 성과"(성공한 작업 수, 사용자 피드백 점수 등)를 함께 표시해야 한다
+  - ※ Costs API는 organization-level 집계 데이터 제공 (8-24시간 지연)
 
 **실시간 비용 폭주 방지 (Real-time Cost Runaway Prevention)**
 - FR004: 시스템은 프로젝트별 일일/주간 비용 임계값을 설정하고, 초과 시 즉시(<1분) Slack/이메일 알림을 발송해야 한다
-- FR005: 시스템은 임계값 초과 시 관리자 승인 전까지 해당 OpenAI API 키를 자동으로 비활성화할 수 있어야 한다
+- FR005: 시스템은 임계값 초과 시 관리자 승인 전까지 해당 Team Admin API 키를 자동으로 비활성화할 수 있어야 한다
 
 **행동 유도 리포트 (Action-Driven Reporting)**
 - FR006: 시스템은 주간 리포트를 생성하여 "가장 비용 효율적인 프로젝트 Top 3" 및 "개선 필요 프로젝트 Top 3"를 하이라이트해야 한다
 
-**아키텍처 기반 귀속 (Architecture-based Attribution)**
-- FR007: 시스템은 팀별로 별도의 OpenAI API 키를 생성하고 관리할 수 있어야 한다 (태그 없이 자동 귀속)
+**아키텍처 기반 귀속 (Architecture-based Attribution) - Multi-Org Support**
+- FR007: 시스템은 팀별로 **여러 AI 제공사의 Organization Admin API Keys**를 등록하고 관리할 수 있어야 한다 (OpenAI, Anthropic, AWS, Azure 등)
+- **FR007-B (NEW)**: 시스템은 프로젝트별로 **AI Provider Project ID**를 등록하고, 해당 Organization의 Admin Key로 접근 가능한지 검증해야 한다
+- **FR007-C (NEW)**: 비용 수집 시 Admin Key + Project IDs 필터링으로 프로젝트별 비용을 자동 귀속해야 한다 (태그 불필요)
+- **FR007-D (NEW)**: 팀은 동일 AI 제공사의 여러 Organization Keys를 등록할 수 있어야 한다 (1:N 관계)
 
 #### **Phase 1B: 클라우드 확장 (Week 5-8)**
 **가설**: "추가 클라우드 통합이 실제 가치를 더하는가?"
@@ -111,7 +119,7 @@ AI 도입이 가속화되면서 조직들은 전례 없는 비용 관리 위기�
 - NFR003: 시스템은 99.5% 이상의 가동률을 유지해야 한다 (MVP 목표, 월 최대 3.6시간 다운타임 허용)
 
 **보안 (Security)**
-- NFR004: 시스템은 모든 클라우드 제공사 API 자격증명을 AES-256으로 암호화하여 저장해야 한다
+- NFR004: 시스템은 모든 클라우드 제공사 API 자격증명 및 Admin API Key를 AES-256으로 암호화하여 저장해야 한다
 - NFR005: 시스템은 모든 통신에 TLS 1.3 이상을 사용해야 한다
 
 ---
@@ -134,14 +142,15 @@ AI 도입이 가속화되면서 조직들은 전례 없는 비용 관리 위기�
 2. **상황 파악** (2분 소요)
    - Slack 알림의 "상세 보기" 링크 클릭 → 웹 대시보드 열림
    - 주간 리포트에서 "chatbot-experiment"의 비용 추이 확인
+   - 주간 리포트에서 해당 프로젝트의 **OpenAI Project ID** 확인
    - 발견: 어제까지 일 $50 수준 → 오늘 갑자기 $742로 급증
    - 원인 파악: API 호출 수가 평소의 15배 (새로운 무한 루프 버그 의심)
 
 3. **즉시 차단** (30초 소요)
-   - 대시보드에서 "마케팅팀 API 키 비활성화" 버튼 클릭
+   - 대시보드에서 **"팀 Admin API 키 비활성화"** 버튼 클릭 (전체 팀 프로젝트 중단) 또는 **"프로젝트 Project ID 제거"** (해당 프로젝트만 제외)
    - 확인 팝업: "이 키를 사용하는 모든 애플리케이션이 중단됩니다. 계속하시겠습니까?"
    - "예, 즉시 차단" 선택
-   - 시스템이 API 키를 즉시 비활성화 → 추가 비용 발생 중단
+   - 시스템이 Admin API 키를 즉시 비활성화 → 추가 비용 발생 중단
 
 4. **팀 커뮤니케이션** (5분 소요)
    - 마케팅팀 팀장(김민수)에게 Slack DM 발송
@@ -150,8 +159,7 @@ AI 도입이 가속화되면서 조직들은 전례 없는 비용 관리 위기�
 
 5. **복구 및 모니터링** (10분 소요)
    - 김민수가 버그 수정 후 코드 리뷰 완료 확인
-   - 이지훈이 새로운 API 키 발급 및 일일 한도 $500 재설정
-   - 새 키를 김민수에게 전달
+   - 이지훈이 Admin API 키 재활성화 또는 Project ID 재등록
    - 시스템이 다음 날 모니터링 계속
 
 **결과**:
@@ -161,9 +169,54 @@ AI 도입이 가속화되면서 조직들은 전례 없는 비용 관리 위기�
 
 **핵심 터치포인트**:
 - FR004: 실시간 임계값 초과 알림
-- FR005: 즉시 API 키 비활성화
+- FR005: 즉시 Admin API 키 비활성화
 - FR006: 주간 리포트로 정상 패턴 대비 이상 징후 파악
 - FR012: 행동 추적 (차단 결정의 효과성 측정)
+
+---
+
+### Secondary Journey: Admin API Key 및 Project ID 설정 (Initial Setup)
+
+**사용자**: FinOps 관리자 (이지훈)
+**목표**: 새 팀의 비용 추적을 위해 OpenAI 연동 설정
+**빈도**: 팀 생성 시 1회 (이후 프로젝트 추가마다 Project ID 등록)
+
+**여정 흐름**:
+
+1. **팀 생성** (5분 소요)
+   - 이지훈이 "새 팀 생성" 클릭 → "마케팅팀" 입력
+   - 시스템이 팀 생성 후 Team Settings 페이지로 리다이렉트
+
+2. **Admin API Key 등록** (3분 소요)
+   - Team Settings → "OpenAI Admin API Key" 섹션
+   - OpenAI Dashboard에서 Organization Admin Key 발급 (별도 창)
+   - Key 복사 후 입력 (sk-admin-...)
+   - "등록" 클릭 → KMS 암호화 후 저장 완료
+   - 성공 메시지: "Admin API Key가 등록되었습니다 (ends with ...abc1)"
+
+3. **프로젝트 생성 및 Project ID 등록** (5분 소요)
+   - "새 프로젝트 생성" → "chatbot-experiment" 입력
+   - Project Settings → "OpenAI Project ID" 섹션
+   - 안내 메시지: "팀의 Admin API Key로 접근 가능한 Project ID를 입력하세요"
+   - OpenAI Dashboard에서 Project ID 복사 (proj_abc123...)
+   - Project ID 입력 후 "등록" 클릭
+   - 시스템이 Costs API로 유효성 검증 (2-3초)
+   - 성공 메시지: "Project ID가 등록되었습니다. 내일부터 비용 데이터가 수집됩니다."
+
+4. **첫 번째 비용 데이터 확인** (다음 날)
+   - 다음 날 오전 9시: 일일 배치 실행
+   - 프로젝트 대시보드에서 전일 비용 확인
+   - Costs API 데이터 기반 차트 표시
+
+**결과**:
+- ✅ 총 13분 만에 팀-프로젝트 연동 완료
+- ✅ 태그 설정 없이 자동 비용 귀속
+- ✅ Organization-level visibility 확보
+
+**핵심 터치포인트**:
+- FR007: Team-level Admin API Key 등록
+- FR007-B: Project-level OpenAI Project ID 등록 및 검증
+- FR001: Costs API 일일 배치 수집
 
 ---
 
@@ -207,7 +260,7 @@ AI 도입이 가속화되면서 조직들은 전례 없는 비용 관리 위기�
 3. **기본 웹 대시보드** (보조)
    - **홈 화면**: 전일/전주/전월 총 비용, 주요 프로젝트 비용 Top 5
    - **프로젝트 상세**: 비용 추이 그래프, 비용-가치 메트릭, API 키 관리
-   - **긴급 조치**: API 키 비활성화 버튼, 임계값 설정
+   - **긴급 조치**: Admin API 키 비활성화 버튼, 임계값 설정
 
 **UI 제약사항**:
 - 대시보드는 "정보 소비"가 아닌 "긴급 조치"에 최적화
@@ -220,17 +273,17 @@ AI 도입이 가속화되면서 조직들은 전례 없는 비용 관리 위기�
 > **전략**: First Principles 접근에 따라 핵심 가치 제공에 집중한 2개의 Epic으로 구성
 
 ### Epic 1: 프로젝트 기반 및 OpenAI 비용 관리 시스템
-**목표**: OpenAI API 비용 추적, 실시간 폭주 방지, 행동 유도 리포트를 통해 즉각적인 가치 제공
+**목표**: OpenAI Costs API 비용 추적, 실시간 폭주 방지, 행동 유도 리포트를 통해 즉각적인 가치 제공
 **기간**: Week 1-6
 **예상 스토리 수**: 8-10개
 
 **핵심 기능**:
-- 프로젝트 인프라 설정 (CI/CD, 데이터베이스, 기본 인증)
-- OpenAI API 비용 일일 배치 수집 및 표시
+- 프로젝트 인프라 설정 (CI/CD, 데이터베이스, 기본 인증, Costs API 지원)
+- **OpenAI Costs API** 비용 일일 배치 수집 및 표시 (organization-level)
 - 비용-가치 컨텍스트 기록 (프로젝트별 성과 추적)
-- 실시간 비용 임계값 알림 및 API 키 긴급 차단
+- 실시간 비용 임계값 알림 및 Admin API 키 긴급 차단
 - 주간 리포트 (Top 3/Bottom 3 프로젝트)
-- 팀별 API 키 관리 (자동 귀속)
+- **팀 Admin API 키 등록 및 프로젝트 ID 관리** (Costs API 필터링)
 - 기본 웹 대시보드 (긴급 조치용)
 
 **검증 기준**:
@@ -324,7 +377,7 @@ AI 도입이 가속화되면서 조직들은 전례 없는 비용 관리 위기�
 **기타 고급 기능**
 - API 제공 (외부 시스템 통합)
 - Webhook 이벤트 (비용 변화 알림)
-- 태그 기반 자동 비용 귀속 (API 키 격리로 충분)
+- 태그 기반 자동 비용 귀속 (Admin Key + Project ID로 충분)
 - CSV/PDF 외 추가 내보내기 형식
 - 멀티 AWS 계정/Azure 구독 통합 뷰
 

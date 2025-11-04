@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { auth, signOut } from "~/server/auth";
 
 export default async function DashboardLayout({
@@ -7,11 +6,9 @@ export default async function DashboardLayout({
 }: {
 	children: React.ReactNode;
 }) {
+	// Middleware already ensures session exists
+	// This is safe to call without null check
 	const session = await auth();
-
-	if (!session) {
-		redirect("/login");
-	}
 
 	return (
 		<div className="min-h-screen bg-background">
@@ -23,7 +20,7 @@ export default async function DashboardLayout({
 					</h1>
 					<div className="flex items-center gap-4">
 						<span className="text-foreground text-sm">
-							{session.user?.email}
+							{session?.user?.email}
 						</span>
 						<form
 							action={async () => {

@@ -7,7 +7,10 @@ import {
 	publicProcedure,
 } from "~/server/api/trpc";
 
-const BCRYPT_ROUNDS = 10;
+// Bcrypt work factor (cost)
+// Higher = more secure but slower. Recommended: 12+ for production
+// Can be overridden via BCRYPT_ROUNDS env var
+const BCRYPT_ROUNDS = Number.parseInt(process.env.BCRYPT_ROUNDS || "12", 10);
 
 export const authRouter = createTRPCRouter({
 	signup: publicProcedure
@@ -159,6 +162,100 @@ export const authRouter = createTRPCRouter({
 				team: tm.team,
 				role: tm.role,
 			})),
+		};
+	}),
+
+	/**
+	 * Change password with session invalidation
+	 *
+	 * Security features:
+	 * - Verifies current password before allowing change
+	 * - Invalidates ALL sessions (including current) for maximum security
+	 * - User must re-login after password change
+	 *
+	 * Note: We invalidate all sessions including the current one because:
+	 * 1. Database session strategy doesn't expose sessionToken in tRPC context
+	 * 2. Forces re-authentication, which is a security best practice
+	 * 3. Ensures the new password is verified immediately
+	 */
+	changePassword: protectedProcedure
+		.input(
+			z.object({
+				currentPassword: z.string(),
+				newPassword: z
+					.string()
+					.min(8, "Password must be at least 8 characters"),
+			}),
+		)
+		.mutation(async ({ input, ctx }) => {
+			const userId = ctx.session.user.id;
+
+			// Fetch user with password hash
+			const user = await ctx.db.user.findUnique({
+				where: { id: userId },
+			});
+
+			if (!user) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "User not found",
+				});
+			}
+
+			// Verify current password
+			const isValid = await bcrypt.compare(
+				input.currentPassword,
+				user.passwordHash,
+			);
+
+			if (!isValid) {
+				throw new TRPCError({
+					code: "UNAUTHORIZED",
+					message: "Current password is incorrect",
+				});
+			}
+
+			// Hash new password
+			const newPasswordHash = await bcrypt.hash(
+				input.newPassword,
+				BCRYPT_ROUNDS,
+			);
+
+			// Update password in database
+			await ctx.db.user.update({
+				where: { id: userId },
+				data: { passwordHash: newPasswordHash },
+			});
+
+			// Invalidate ALL sessions for security
+			// This includes the current session - user will need to re-login
+			await ctx.db.session.deleteMany({
+				where: { userId },
+			});
+
+			return {
+				success: true,
+				message:
+					"Password changed successfully. Please log in again with your new password.",
+			};
+		}),
+
+	/**
+	 * Sign out from all devices
+	 *
+	 * Invalidates all sessions for the current user
+	 */
+	signOutAllDevices: protectedProcedure.mutation(async ({ ctx }) => {
+		const userId = ctx.session.user.id;
+
+		// Delete all sessions for this user
+		await ctx.db.session.deleteMany({
+			where: { userId },
+		});
+
+		return {
+			success: true,
+			message: "Signed out from all devices",
 		};
 	}),
 });
