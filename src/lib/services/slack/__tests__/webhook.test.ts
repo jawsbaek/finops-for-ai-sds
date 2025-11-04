@@ -4,16 +4,7 @@
  * Tests sendCostAlert message formatting, retry logic, and error handling
  */
 
-// Mock logger to avoid console noise
-vi.mock("~/lib/logger", () => ({
-	logger: {
-		info: vi.fn(),
-		warn: vi.fn(),
-		error: vi.fn(),
-	},
-}));
-
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type SlackCostAlertParams,
 	type SlackDisableNotificationParams,

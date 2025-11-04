@@ -12,6 +12,7 @@
  * - updateMemberRole: Update a member's role
  */
 
+import type { TeamMember } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logger } from "~/lib/logger";
@@ -22,6 +23,32 @@ import {
 import { fetchOpenAIOrganizationId } from "~/lib/services/providers/openai-validator";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { db } from "~/server/db";
+
+/**
+ * Helper function to verify that a user has admin or owner role for a team
+ *
+ * @param teamMember - The team member record to check
+ * @param operation - Description of the operation being performed (for error messages)
+ * @throws {TRPCError} - FORBIDDEN if user is not a member or lacks sufficient privileges
+ */
+function requireAdminRole(
+	teamMember: TeamMember | null,
+	operation: string,
+): void {
+	if (!teamMember) {
+		throw new TRPCError({
+			code: "FORBIDDEN",
+			message: "You are not a member of this team",
+		});
+	}
+
+	if (teamMember.role !== "owner" && teamMember.role !== "admin") {
+		throw new TRPCError({
+			code: "FORBIDDEN",
+			message: `Only team owners and admins can ${operation}`,
+		});
+	}
+}
 
 export const teamRouter = createTRPCRouter({
 	/**
@@ -1007,7 +1034,7 @@ export const teamRouter = createTRPCRouter({
 		.mutation(async ({ ctx, input }) => {
 			const userId = ctx.session.user.id;
 
-			// 1. Verify team membership
+			// 1. Verify team membership and require owner/admin role
 			const teamMember = await ctx.db.teamMember.findUnique({
 				where: {
 					teamId_userId: {
@@ -1017,12 +1044,7 @@ export const teamRouter = createTRPCRouter({
 				},
 			});
 
-			if (!teamMember) {
-				throw new TRPCError({
-					code: "FORBIDDEN",
-					message: "You are not a member of this team",
-				});
-			}
+			requireAdminRole(teamMember, "delete admin API keys");
 
 			// 2. Find the admin key
 			const adminKey = await ctx.db.organizationApiKey.findUnique({
@@ -1096,7 +1118,7 @@ export const teamRouter = createTRPCRouter({
 		.mutation(async ({ ctx, input }) => {
 			const userId = ctx.session.user.id;
 
-			// 1. Verify team membership
+			// 1. Verify team membership and require owner/admin role
 			const teamMember = await ctx.db.teamMember.findUnique({
 				where: {
 					teamId_userId: {
@@ -1106,12 +1128,7 @@ export const teamRouter = createTRPCRouter({
 				},
 			});
 
-			if (!teamMember) {
-				throw new TRPCError({
-					code: "FORBIDDEN",
-					message: "You are not a member of this team",
-				});
-			}
+			requireAdminRole(teamMember, "toggle admin API keys");
 
 			// 2. Find the admin key first (needed for resourceId)
 			const adminKey = await ctx.db.organizationApiKey.findUnique({

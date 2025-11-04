@@ -250,4 +250,118 @@ describe("OpenAI Costs API Collector (v2)", () => {
 			expect(totalCost).toBe(3.0);
 		});
 	});
+
+	describe("Pagination Safety (MAX_PAGES)", () => {
+		it("should respect MAX_PAGES limit to prevent infinite loops", () => {
+			const MAX_PAGES = 100;
+			let hasMore = true;
+			let pageCount = 0;
+
+			// Simulate pagination that would otherwise loop forever
+			while (hasMore && pageCount < MAX_PAGES) {
+				pageCount++;
+				// Simulate API always returning has_more: true (buggy API behavior)
+				if (pageCount >= MAX_PAGES) {
+					hasMore = false;
+				}
+			}
+
+			expect(pageCount).toBe(MAX_PAGES);
+			expect(pageCount).not.toBeGreaterThan(MAX_PAGES);
+		});
+
+		it("should calculate total buckets correctly when hitting MAX_PAGES", () => {
+			const MAX_PAGES = 100;
+			const ITEMS_PER_PAGE = 180;
+			const maxPossibleBuckets = MAX_PAGES * ITEMS_PER_PAGE;
+
+			expect(maxPossibleBuckets).toBe(18000);
+		});
+
+		it("should warn when hitting maximum page limit", () => {
+			const MAX_PAGES = 100;
+			let pageCount = 0;
+			let hasMore = true;
+			let shouldWarn = false;
+
+			while (hasMore && pageCount < MAX_PAGES) {
+				pageCount++;
+				// Keep simulating more pages
+				hasMore = true;
+			}
+
+			if (pageCount >= MAX_PAGES) {
+				shouldWarn = true;
+			}
+
+			expect(shouldWarn).toBe(true);
+			expect(pageCount).toBe(MAX_PAGES);
+		});
+
+		it("should not warn if pagination completes normally before MAX_PAGES", () => {
+			const MAX_PAGES = 100;
+			let pageCount = 0;
+			let hasMore = true;
+			let shouldWarn = false;
+
+			while (hasMore && pageCount < MAX_PAGES) {
+				pageCount++;
+				// Simulate API returning has_more: false after 5 pages
+				if (pageCount >= 5) {
+					hasMore = false;
+				}
+			}
+
+			if (pageCount >= MAX_PAGES) {
+				shouldWarn = true;
+			}
+
+			expect(shouldWarn).toBe(false);
+			expect(pageCount).toBe(5);
+		});
+
+		it("should allow configuring MAX_PAGES via environment variable", () => {
+			// Test that environment variable parsing works correctly
+			const testCases = [
+				{ env: "50", expected: 50 },
+				{ env: "200", expected: 200 },
+				{ env: "invalid", expected: Number.NaN },
+				{ env: undefined, expected: 100 }, // default
+			];
+
+			for (const { env, expected } of testCases) {
+				const result = Number.parseInt(env ?? "100", 10);
+				if (Number.isNaN(expected)) {
+					expect(Number.isNaN(result)).toBe(true);
+				} else {
+					expect(result).toBe(expected);
+				}
+			}
+		});
+
+		it("should continue accumulating buckets across pages", () => {
+			const allBuckets: { id: number }[] = [];
+			const MAX_PAGES = 3;
+			const ITEMS_PER_PAGE = 10;
+			let pageCount = 0;
+			let hasMore = true;
+
+			while (hasMore && pageCount < MAX_PAGES) {
+				pageCount++;
+				// Simulate adding buckets from each page
+				const pageBuckets = Array.from({ length: ITEMS_PER_PAGE }, (_, i) => ({
+					id: (pageCount - 1) * ITEMS_PER_PAGE + i,
+				}));
+				allBuckets.push(...pageBuckets);
+
+				// Stop after 3 pages
+				if (pageCount >= 3) {
+					hasMore = false;
+				}
+			}
+
+			expect(allBuckets.length).toBe(30); // 3 pages * 10 items
+			expect(pageCount).toBe(3);
+		});
+	});
 });

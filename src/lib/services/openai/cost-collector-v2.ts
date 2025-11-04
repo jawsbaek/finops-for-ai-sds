@@ -110,22 +110,32 @@ async function fetchOpenAICosts(
 
 	logger.info({ url: url.toString() }, "Fetching OpenAI Costs API");
 
-	const response = await fetch(url.toString(), {
-		method: "GET",
-		headers: {
-			Authorization: `Bearer ${adminApiKey}`,
-			"Content-Type": "application/json",
-		},
-	});
+	try {
+		const response = await fetch(url.toString(), {
+			method: "GET",
+			headers: {
+				Authorization: `Bearer ${adminApiKey}`,
+				"Content-Type": "application/json",
+			},
+			// 10 second timeout - OpenAI API typically responds within 1-2s,
+			// this allows for network latency and occasional slowness
+			signal: AbortSignal.timeout(10000),
+		});
 
-	if (!response.ok) {
-		const errorText = await response.text();
-		throw new Error(
-			`OpenAI Costs API error (${response.status}): ${errorText}`,
-		);
+		if (!response.ok) {
+			const errorText = await response.text();
+			throw new Error(
+				`OpenAI Costs API error (${response.status}): ${errorText}`,
+			);
+		}
+
+		return (await response.json()) as CostsAPIResponse;
+	} catch (error) {
+		if (error instanceof Error && error.name === "AbortError") {
+			throw new Error("OpenAI Costs API request timed out after 10 seconds");
+		}
+		throw error;
 	}
-
-	return (await response.json()) as CostsAPIResponse;
 }
 
 /**
@@ -146,8 +156,21 @@ async function fetchOpenAICostsComplete(
 	const allBuckets: CostBucket[] = [];
 	let currentPage: string | undefined;
 	let hasMore = true;
+	let pageCount = 0;
+	/**
+	 * Maximum number of pages to fetch from OpenAI Costs API.
+	 * Prevents infinite loops in case of API issues or misconfiguration.
+	 * With limit=180, this allows fetching up to 18,000 cost buckets.
+	 * Can be configured via COST_COLLECTOR_MAX_PAGES environment variable.
+	 */
+	const MAX_PAGES = Number.parseInt(
+		process.env.COST_COLLECTOR_MAX_PAGES ?? "100",
+		10,
+	);
 
-	while (hasMore) {
+	while (hasMore && pageCount < MAX_PAGES) {
+		pageCount++;
+
 		const response = await retryWithBackoff(
 			() =>
 				fetchOpenAICosts(
@@ -168,6 +191,7 @@ async function fetchOpenAICostsComplete(
 				bucketsInPage: response.data.length,
 				totalBuckets: allBuckets.length,
 				hasMore: response.has_more,
+				pageCount,
 			},
 			"Fetched OpenAI costs page",
 		);
@@ -177,6 +201,13 @@ async function fetchOpenAICostsComplete(
 		} else {
 			hasMore = false;
 		}
+	}
+
+	if (pageCount >= MAX_PAGES) {
+		logger.warn(
+			{ pageCount, totalBuckets: allBuckets.length },
+			"Hit maximum page limit for cost collection",
+		);
 	}
 
 	return allBuckets;

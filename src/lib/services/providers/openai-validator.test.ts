@@ -100,4 +100,34 @@ describe("validateOpenAIProjectId", () => {
 			"Admin API Key does not have access to this project",
 		);
 	});
+
+	it("should return invalid for 500 response with generic error message", async () => {
+		global.fetch = vi.fn().mockResolvedValue({
+			ok: false,
+			status: 500,
+			text: async () => "Internal Server Error",
+		});
+
+		const result = await validateOpenAIProjectId("sk-admin-test", "proj_test");
+
+		expect(result.valid).toBe(false);
+		expect(result.error).toBe(
+			"Unable to validate project ID. Please check your API key permissions and try again.",
+		);
+	});
+
+	it("should return invalid for 429 rate limit with generic error message", async () => {
+		global.fetch = vi.fn().mockResolvedValue({
+			ok: false,
+			status: 429,
+			text: async () => "Rate limit exceeded",
+		});
+
+		const result = await validateOpenAIProjectId("sk-admin-test", "proj_test");
+
+		expect(result.valid).toBe(false);
+		expect(result.error).toBe(
+			"Unable to validate project ID. Please check your API key permissions and try again.",
+		);
+	});
 });

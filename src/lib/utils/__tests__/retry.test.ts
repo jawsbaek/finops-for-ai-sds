@@ -4,26 +4,28 @@
  * Tests exponential backoff, retry logic, and error handling
  */
 
-// Mock logger to avoid console noise
-vi.mock("~/lib/logger", () => ({
-	logger: {
-		info: vi.fn(),
-		warn: vi.fn(),
-		error: vi.fn(),
-	},
-}));
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { logger } from "~/lib/logger";
+import * as loggerModule from "~/lib/logger";
 import { retryWithBackoff } from "../retry";
 
 describe("Retry Utility", () => {
+	let warnSpy: ReturnType<typeof vi.fn>;
+	let errorSpy: ReturnType<typeof vi.fn>;
+
 	beforeEach(() => {
 		vi.clearAllMocks();
+		// Spy on logger methods to verify they're called correctly
+		warnSpy = vi
+			.spyOn(loggerModule.logger, "warn")
+			.mockImplementation(() => {}) as ReturnType<typeof vi.fn>;
+		errorSpy = vi
+			.spyOn(loggerModule.logger, "error")
+			.mockImplementation(() => {}) as ReturnType<typeof vi.fn>;
 	});
 
 	afterEach(() => {
 		vi.useRealTimers();
+		vi.restoreAllMocks();
 	});
 
 	describe("retryWithBackoff", () => {
@@ -34,8 +36,8 @@ describe("Retry Utility", () => {
 
 			expect(result).toBe("success");
 			expect(mockFn).toHaveBeenCalledTimes(1);
-			expect(logger.warn).not.toHaveBeenCalled();
-			expect(logger.error).not.toHaveBeenCalled();
+			expect(warnSpy).not.toHaveBeenCalled();
+			expect(errorSpy).not.toHaveBeenCalled();
 		});
 
 		it("should retry on failure and succeed eventually", async () => {
@@ -57,8 +59,8 @@ describe("Retry Utility", () => {
 
 			expect(result).toBe("success");
 			expect(mockFn).toHaveBeenCalledTimes(3);
-			expect(logger.warn).toHaveBeenCalledTimes(2);
-			expect(logger.error).not.toHaveBeenCalled();
+			expect(warnSpy).toHaveBeenCalledTimes(2);
+			expect(errorSpy).not.toHaveBeenCalled();
 		});
 
 		it("should throw error after all retries exhausted", async () => {
@@ -85,8 +87,8 @@ describe("Retry Utility", () => {
 			expect(caughtError).toBeDefined();
 			expect(caughtError?.message).toBe("Permanent failure");
 			expect(mockFn).toHaveBeenCalledTimes(3);
-			expect(logger.warn).toHaveBeenCalledTimes(2);
-			expect(logger.error).toHaveBeenCalledTimes(1);
+			expect(warnSpy).toHaveBeenCalledTimes(2);
+			expect(errorSpy).toHaveBeenCalledTimes(1);
 		});
 
 		it("should use custom maxRetries", async () => {
@@ -166,12 +168,12 @@ describe("Retry Utility", () => {
 
 			await testPromise;
 
-			expect(logger.warn).toHaveBeenCalledWith(
+			expect(warnSpy).toHaveBeenCalledWith(
 				expect.objectContaining({ attempt: 0, delayMs: 1000 }),
 				"Retrying Custom operation after error",
 			);
 
-			expect(logger.error).toHaveBeenCalledWith(
+			expect(errorSpy).toHaveBeenCalledWith(
 				expect.any(Object),
 				"Custom operation failed after all retries",
 			);
@@ -197,7 +199,7 @@ describe("Retry Utility", () => {
 
 			await testPromise;
 
-			expect(logger.error).toHaveBeenCalledWith(
+			expect(errorSpy).toHaveBeenCalledWith(
 				expect.any(Object),
 				"Custom final error message",
 			);
@@ -225,7 +227,7 @@ describe("Retry Utility", () => {
 			await testPromise;
 
 			// This tests the ?? operator branch (line 89)
-			expect(logger.error).toHaveBeenCalledWith(
+			expect(errorSpy).toHaveBeenCalledWith(
 				expect.any(Object),
 				"Test context failed after all retries",
 			);

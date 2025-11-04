@@ -4,21 +4,26 @@
  * Tests checkThresholds, calculateCurrentCost, and throttling logic
  */
 
-// Mock the database - must be at top level before imports
+import { Decimal } from "@prisma/client/runtime/library";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Use vi.hoisted to create mocks before imports - this is the correct Vitest pattern
+const mockFindMany = vi.hoisted(() => vi.fn());
+const mockUpdate = vi.hoisted(() => vi.fn());
+const mockAggregate = vi.hoisted(() => vi.fn());
+
 vi.mock("~/server/db", () => ({
 	db: {
 		costAlert: {
-			findMany: vi.fn(),
-			update: vi.fn(),
+			findMany: mockFindMany,
+			update: mockUpdate,
 		},
 		costData: {
-			aggregate: vi.fn(),
+			aggregate: mockAggregate,
 		},
 	},
 }));
 
-import { Decimal } from "@prisma/client/runtime/library";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { db } from "~/server/db";
 import {
 	type AlertEvent,
@@ -35,6 +40,7 @@ describe("Threshold Monitor Service", () => {
 
 	afterEach(() => {
 		vi.useRealTimers();
+		vi.restoreAllMocks();
 	});
 
 	describe("checkThresholds", () => {
