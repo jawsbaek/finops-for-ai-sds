@@ -81,7 +81,9 @@ export function AIProviderRegistration({
 	// Real-time validation via API
 	const validateMutation = api.project.validateAIProjectId.useMutation();
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: validateMutation is excluded intentionally - it's recreated on every render but we only want validation to trigger when input values change
 	useEffect(() => {
+		let isCancelled = false;
 		if (!projectIdInput.trim() || !selectedProvider || !selectedOrg) {
 			setValidationStatus("idle");
 			return;
@@ -104,6 +106,7 @@ export function AIProviderRegistration({
 				},
 				{
 					onSuccess: (result) => {
+						if (isCancelled) return; // Don't update if effect was cancelled
 						if (result.valid) {
 							setValidationStatus("valid");
 							setValidationError("");
@@ -113,6 +116,7 @@ export function AIProviderRegistration({
 						}
 					},
 					onError: (error) => {
+						if (isCancelled) return; // Don't update if effect was cancelled
 						setValidationStatus("invalid");
 						setValidationError(error.message);
 					},
@@ -120,14 +124,11 @@ export function AIProviderRegistration({
 			);
 		}, 500);
 
-		return () => clearTimeout(timer);
-	}, [
-		projectIdInput,
-		selectedProvider,
-		selectedOrg,
-		projectId,
-		validateMutation,
-	]);
+		return () => {
+			clearTimeout(timer);
+			isCancelled = true; // Mark as cancelled to prevent state updates
+		};
+	}, [projectIdInput, selectedProvider, selectedOrg, projectId]);
 
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();

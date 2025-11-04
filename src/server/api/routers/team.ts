@@ -926,54 +926,6 @@ export const teamRouter = createTRPCRouter({
 		}),
 
 	/**
-	 * Get Admin API Key status for a team (Legacy - returns first key)
-	 *
-	 * Any team member can view the status (but not the actual key)
-	 * @deprecated Use getAdminApiKeys instead for multi-org support
-	 */
-	getAdminApiKeyStatus: protectedProcedure
-		.input(z.object({ teamId: z.string() }))
-		.query(async ({ ctx, input }) => {
-			const userId = ctx.session.user.id;
-
-			// Verify team membership
-			const teamMember = await db.teamMember.findUnique({
-				where: {
-					teamId_userId: {
-						teamId: input.teamId,
-						userId,
-					},
-				},
-			});
-
-			if (!teamMember) {
-				throw new TRPCError({
-					code: "FORBIDDEN",
-					message: "You are not a member of this team",
-				});
-			}
-
-			// Get first Admin API Key (for backward compatibility)
-			const adminKeys = await db.organizationApiKey.findMany({
-				where: { teamId: input.teamId },
-				select: {
-					id: true,
-					provider: true,
-					organizationId: true,
-					displayName: true,
-					last4: true,
-					isActive: true,
-					keyType: true,
-					createdAt: true,
-					updatedAt: true,
-				},
-				take: 1,
-			});
-
-			return adminKeys[0] ?? null;
-		}),
-
-	/**
 	 * Get all Admin API Keys for a team
 	 * Returns array of keys (supports multi-org)
 	 */

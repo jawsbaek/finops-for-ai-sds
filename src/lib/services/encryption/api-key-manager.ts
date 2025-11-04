@@ -87,12 +87,6 @@ export async function encryptApiKey(plainApiKey: string): Promise<{
 }
 
 /**
- * @deprecated Use encryptApiKey instead. This function will be removed in a future version.
- * @see encryptApiKey
- */
-export const generateEncryptedApiKey = encryptApiKey;
-
-/**
  * Decrypt an encrypted API key
  *
  * @param ciphertext - The encrypted API key
