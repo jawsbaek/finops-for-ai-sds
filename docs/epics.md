@@ -1,9 +1,12 @@
 # finops-for-ai - Epic Breakdown
 
 **Author:** Issac
-**Date:** 2025-10-31
+**Date:** 2025-01-04 (Updated for Costs API Migration)
+**Original Date:** 2025-10-31
 **Project Level:** 2
 **Target Scale:** MVP - AI Cost Management Platform
+
+> **🔄 MIGRATION NOTE:** This document has been updated to reflect the OpenAI Costs API migration. Story 1.2 and Story 1.7 have been completely rewritten to support organization-level cost collection using Team Admin API Keys and Project ID filtering. See [BREAKING_CHANGES.md](./migration/BREAKING_CHANGES.md) for migration details.
 
 ---
 
@@ -29,14 +32,14 @@ Each epic includes:
 
 ## Epic 1: 프로젝트 기반 및 OpenAI 비용 관리 시스템
 
-**목표**: OpenAI API 비용 추적, 실시간 폭주 방지, 행동 유도 리포트를 통해 즉각적인 가치 제공
+**목표**: OpenAI Costs API 비용 추적, 실시간 폭주 방지, 행동 유도 리포트를 통해 즉각적인 가치 제공
 
 **기간**: Week 1-8 (확장됨: 보안 강화 및 최적화 포함)
 
 **예상 스토리 수**: 13개 (기존 9개 + 프로젝트 관리 4개)
 
 **가치 제안**:
-- 첫 주부터 OpenAI 비용 가시성 확보
+- 첫 주부터 OpenAI 비용 가시성 확보 (organization-level visibility)
 - 2주차부터 실시간 비용 폭주 방지 가능
 - 3주차부터 주간 리포트로 팀별 행동 변화 유도
 - 핵심 가설 검증: "비용-가치 연결이 실제 의사결정을 개선하는가?"
@@ -70,25 +73,62 @@ Each epic includes:
 
 ---
 
-### Story 1.2: OpenAI API 비용 일일 배치 수집 시스템
+### Story 1.2: OpenAI Costs API 비용 일일 배치 수집 시스템
 
 **As a** FinOps 관리자,
-**I want** OpenAI API 사용 내역을 매일 자동으로 수집하여,
-**So that** 전일 총 비용을 확인하고 프로젝트별 지출을 파악할 수 있다.
+**I want** 매일 자동으로 OpenAI Costs API에서 organization 비용 데이터를 수집하여,
+**So that** 팀 전체의 AI 지출을 실시간으로 파악하고 프로젝트별로 분석할 수 있다.
+
+**우선순위:** Must Have
+**예상 시간:** 4시간
+**의존성:** Story 1.1 (인프라), Story 1.7 (Admin API Key)
 
 **Acceptance Criteria:**
-1. 시스템은 매일 오전 9시 KST에 OpenAI API를 호출하여 전일 사용 내역을 가져와야 한다 (FR001)
-2. 수집된 데이터는 cost_data 테이블에 저장되어야 한다 (날짜, API 키, 모델, 토큰 수, 비용)
-3. 홈 화면에 "어제 총 비용" 및 "이번 주 총 비용"이 표시되어야 한다
-4. 데이터 수집 실패 시 관리자에게 이메일 알림이 발송되어야 한다
-5. API 자격증명은 AES-256으로 암호화되어 저장되어야 한다 (NFR004)
+1. Team의 Admin API Key로 Costs API 호출 성공 (organization-level)
+2. project_ids 파라미터로 team의 프로젝트 필터링
+3. Pagination 지원 (has_more, next_page 처리)
+4. Time bucket aggregation 데이터 파싱 (bucketStartTime, bucketEndTime, lineItem)
+5. openai_project_id → internal project_id 매핑
+6. CostData 테이블 저장 (apiVersion='costs_v1', unique_cost_bucket constraint)
+7. 매일 오전 9시 KST Vercel Cron 실행
 
-**Prerequisites:** Story 1.1 (인프라 및 데이터베이스)
+**Implementation Tasks:**
+- [ ] `src/lib/services/openai/cost-collector-v2.ts` 생성
+  - [ ] Costs API client 구현 (fetchOpenAICosts, fetchOpenAICostsComplete)
+  - [ ] Pagination 로직 (while loop, next_page)
+  - [ ] Time bucket → CostData 변환 (CollectedCostDataV2 타입)
+- [ ] Project ID 매핑 로직 (Map<openaiProjectId, internalProjectId>)
+- [ ] `storeCostDataV2` 함수 (createMany with skipDuplicates)
+- [ ] `src/app/api/cron/daily-batch/route.ts` 업데이트 (v2 호출)
+- [ ] Unit tests (Vitest + MSW)
+  - [ ] Costs API response parsing
+  - [ ] Pagination handling
+  - [ ] Project ID mapping edge cases
+- [ ] Integration test (Cron job 수동 트리거)
+
+**Prerequisites:** Story 1.1 (인프라 및 데이터베이스), Story 1.7 (Admin API Key 등록)
 
 **Technical Notes:**
-- OpenAI API: `/v1/usage` endpoint (requires organization API key)
-- Scheduler: Cron job or AWS EventBridge/Azure Functions
+- OpenAI Costs API: `/v1/organization/costs` endpoint (requires Admin API key)
+- Scheduler: Vercel Cron jobs (9am KST daily)
 - Error handling: Retry logic with exponential backoff
+- Data structure: Time-bucketed aggregated costs with line_item grouping
+- Pagination: max 180 buckets per request, uses next_page cursor
+
+**API Details:**
+```
+GET https://api.openai.com/v1/organization/costs
+Headers:
+  Authorization: Bearer {ADMIN_API_KEY}
+Query:
+  start_time: Unix timestamp (전일 00:00)
+  end_time: Unix timestamp (전일 23:59)
+  bucket_width: 1d
+  group_by: line_item,project_id
+  project_ids[]: proj_abc123,proj_def456
+  limit: 180
+  page: {next_page_cursor}
+```
 
 ---
 
@@ -122,7 +162,7 @@ Each epic includes:
 
 **Acceptance Criteria:**
 1. 프로젝트 설정 페이지에서 일일/주간 비용 임계값을 설정할 수 있어야 한다 (FR004)
-2. 시스템은 OpenAI API 비용 데이터를 5분마다 확인하여 임계값 초과 여부를 검사해야 한다
+2. 시스템은 OpenAI Costs API 비용 데이터를 5분마다 확인하여 임계값 초과 여부를 검사해야 한다
 3. 임계값 초과 시 1분 이내에 Slack 및 이메일 알림을 발송해야 한다 (NFR002, FR004)
 4. 알림 메시지는 "프로젝트명, 현재 비용, 임계값, 초과율"을 포함해야 한다
 5. 알림 메시지에 "상세 보기" 링크가 포함되어 대시보드로 즉시 이동할 수 있어야 한다
@@ -180,25 +220,101 @@ Each epic includes:
 
 ---
 
-### Story 1.7: 팀별 API 키 생성 및 자동 귀속
+### Story 1.7: 팀 Admin API 키 등록 및 프로젝트 ID 관리
 
-**As a** 시스템 관리자,
-**I want** 팀별로 별도의 OpenAI API 키를 생성하고 관리하여,
-**So that** 태그 없이도 비용이 자동으로 팀에 귀속되도록 할 수 있다.
+**As a** Team Admin,
+**I want** OpenAI Organization Admin API Key를 등록하고 프로젝트별 Project ID를 관리하여,
+**So that** Costs API로 organization 전체 비용을 조회하고 프로젝트별로 필터링할 수 있다.
+
+**우선순위:** Must Have
+**예상 시간:** 6시간
+**의존성:** Story 1.1 (KMS 인프라)
 
 **Acceptance Criteria:**
-1. 시스템은 "팀" 엔티티를 생성할 수 있어야 한다 (팀명, 담당자, 예산)
-2. 각 팀에 대해 고유한 OpenAI API 키를 생성하고 관리할 수 있어야 한다 (FR007)
-3. 비용 데이터 수집 시 API 키를 기준으로 팀을 자동 식별해야 한다
-4. 홈 화면에 "팀별 비용 Top 5" 차트가 표시되어야 한다
-5. 팀 관리 페이지에서 API 키 생성, 조회, 비활성화를 할 수 있어야 한다
+1. Team Settings 페이지에 "Admin API Key" 등록 UI 구현
+2. Admin API Key KMS 암호화 후 OrganizationApiKey 테이블 저장
+3. Project Settings 페이지에 "OpenAI Project ID" 등록 UI 구현
+4. Project ID 형식 검증 (regex: /^proj_[a-zA-Z0-9_-]+$/)
+5. Project ID 유효성 검증 (Costs API test call with Admin Key)
+6. Project ID uniqueness 검증 (다른 프로젝트에서 이미 사용 중이면 reject)
+7. Team에 Admin Key 없으면 Project ID 등록 불가 (precondition)
+8. Audit log 기록 (admin_api_key_registered, openai_project_id_registered)
 
-**Prerequisites:** Story 1.2 (비용 데이터 수집)
+**Implementation Tasks:**
+
+**Backend (tRPC):**
+- [ ] `src/server/api/routers/team.ts` 확장
+  - [ ] `registerAdminApiKey` procedure (KMS encryption)
+  - [ ] `getAdminApiKeyStatus` procedure
+- [ ] `src/server/api/routers/project.ts` 확장
+  - [ ] `registerOpenAIProjectId` procedure
+  - [ ] `validateOpenAIProjectId` procedure (Costs API test)
+- [ ] Prisma schema migration (OrganizationApiKey, Project.openaiProjectId)
+- [ ] KMS encryption service 재사용 (api-key-manager.ts)
+
+**Frontend (UI):**
+- [ ] `src/app/(dashboard)/teams/[id]/settings/page.tsx` 생성
+  - [ ] Admin API Key 입력 폼 (password type)
+  - [ ] Key status 표시 (last4, isActive)
+  - [ ] 등록/업데이트 버튼
+- [ ] `src/app/(dashboard)/projects/[id]/settings/page.tsx` 확장
+  - [ ] OpenAI Project ID 입력 폼
+  - [ ] Precondition 체크 (Admin Key 존재 여부)
+  - [ ] 유효성 검증 로딩 상태 (2-3초)
+  - [ ] 에러 핸들링 (invalid format, access denied, duplicate)
+
+**Testing:**
+- [ ] Unit tests (KMS encryption, Project ID regex)
+- [ ] Integration tests (tRPC procedures)
+- [ ] E2E tests (Admin Key 등록 → Project ID 등록 flow)
+- [ ] Validation script (`scripts/validate-openai-setup.ts`)
+
+**Prerequisites:** Story 1.1 (KMS 인프라)
 
 **Technical Notes:**
-- API key mapping: api_keys table with team_id foreign key
-- Isolation: One API key per team (no sharing)
-- Billing: Aggregate costs by team_id for reporting
+- OrganizationApiKey model: team-level, unique constraint on teamId
+- KMS Envelope Encryption: AES-256-GCM with AWS KMS
+- Project ID validation: Test Costs API call with Admin Key + single Project ID
+- Precondition enforcement: UI checks team.organizationApiKey existence before allowing Project ID registration
+- Error messages: Korean language for all validation failures
+
+**Data Models:**
+```prisma
+// Team-level Organization Admin API Key - Multi-Org Support
+model OrganizationApiKey {
+  id               String   @id @default(cuid())
+  teamId           String   @map("team_id")  // ✅ Removed @unique - now 1:N (team can have multiple org keys)
+  provider         String   // 'openai', 'anthropic', 'aws', 'azure'
+  organizationId   String?  @map("organization_id") // OpenAI: org_xxx, Anthropic: workspace_xxx
+  encryptedKey     String   @map("encrypted_key") @db.Text
+  encryptedDataKey String   @map("encrypted_data_key") @db.Text
+  iv               String
+  last4            String   @db.VarChar(4)
+  isActive         Boolean  @default(true) @map("is_active")
+  keyType          String   @default("admin") @map("key_type")
+  displayName      String?  @map("display_name") // User-friendly name for UI
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, provider, organizationId], name: "unique_team_provider_org")
+  @@index([teamId])
+  @@index([provider, isActive])
+  @@map("organization_api_keys")
+}
+
+model Project {
+  // ... existing fields ...
+  aiProvider       String?  @map("ai_provider")        // 'openai', 'anthropic', 'aws', 'azure'
+  aiOrganizationId String?  @map("ai_organization_id") // org_xxx, workspace_xxx, account_id, subscription_id
+  aiProjectId      String?  @map("ai_project_id")      // proj_xxx, project_xxx, application_id
+
+  @@unique([aiProvider, aiOrganizationId, aiProjectId], name: "unique_provider_org_project")
+  @@index([aiProvider, aiOrganizationId])
+  @@index([aiProjectId])
+}
+```
 
 ---
 
@@ -209,7 +325,7 @@ Each epic includes:
 **So that** 알림 받은 후 즉시 상황을 이해하고 대응할 수 있다.
 
 **Acceptance Criteria:**
-1. 홈 화면에 "전일/전주/전월 총 비용" 카드가 표시되어야 한다
+1. 홈 화면에 "전일/전주/전월 총 비용" 카드가 표시되어야 한다 (Costs API 데이터 기준)
 2. 홈 화면에 "주요 프로젝트 비용 Top 5" 차트가 표시되어야 한다
 3. 프로젝트 상세 페이지에 비용 추이 그래프(최근 30일)가 표시되어야 한다
 4. 프로젝트 상세 페이지에서 임계값 설정 및 API 키 비활성화가 가능해야 한다
@@ -221,6 +337,7 @@ Each epic includes:
 - UI library: Recharts or Chart.js for visualization
 - Performance: Server-side rendering + caching for fast load
 - Mobile: Responsive design for tablet/mobile access
+- Data source: Costs API aggregated data (apiVersion='costs_v1')
 
 ---
 
@@ -231,7 +348,7 @@ Each epic includes:
 **So that** 사용자에게 안정적인 OpenAI 비용 관리 시스템을 제공할 수 있다.
 
 **Acceptance Criteria:**
-1. 엔드투엔드 시나리오 테스트가 성공해야 한다 (회원가입 → API 키 생성 → 비용 수집 → 알림 → 비활성화)
+1. 엔드투엔드 시나리오 테스트가 성공해야 한다 (회원가입 → Admin Key 등록 → Project ID 등록 → 비용 수집 → 알림 → 비활성화)
 2. 시스템 가동률이 99.5% 이상이어야 한다 (NFR003, 최근 7일 기준)
 3. 실제 사용자 1개 팀이 파일럿 테스트를 완료하고 피드백을 제공해야 한다
 4. 모든 보안 요구사항이 충족되어야 한다 (TLS 1.3, AES-256 암호화, NFR004/NFR005)
@@ -546,5 +663,26 @@ So that [benefit/value].
 - **Value-focused** - Integrate technical enablers into value-delivering stories
 
 ---
+
+## Summary
+
+**Stories Rewritten:** 2 (Story 1.2, Story 1.7)
+**New AC Count:**
+- Story 1.2: 7 criteria (up from 5)
+- Story 1.7: 8 criteria (completely new structure)
+
+**Implementation Tasks Count:**
+- Story 1.2: 6 major tasks + testing
+- Story 1.7: 8 backend tasks + 4 frontend tasks + 4 testing tasks
+
+**Dependencies Added:**
+- Story 1.2 now depends on Story 1.7 (Admin API Key required)
+
+**Key Changes:**
+1. Story 1.2 completely rewritten for Costs API (organization-level collection with pagination)
+2. Story 1.7 completely rewritten for Team Admin API Key + Project ID management
+3. All AC aligned with tech-spec-epic-1-v2.md
+4. Implementation tasks split between backend (tRPC) and frontend (UI)
+5. Time estimates updated: Story 1.2 (4 hours), Story 1.7 (6 hours)
 
 **For implementation:** Use the `create-story` workflow to generate individual story implementation plans from this epic breakdown.
