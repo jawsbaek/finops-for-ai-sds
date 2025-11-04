@@ -1,588 +1,1619 @@
-# Story 1.7: 팀별 API 키 생성 및 자동 귀속
+# Story 1.7: 팀 Admin API 키 등록 및 프로젝트 ID 관리
 
-Status: done
+**Status:** ready-for-dev
+
+**Date Created:** 2025-01-04 (Migration Version)
+**Original Story:** 1-7-팀별-api-키-생성-및-자동-귀속.md
+**Migration Context:** OpenAI Costs API Migration - Team-level Admin Key + Project ID Filtering
+
+---
 
 ## Story
 
-As a 시스템 관리자,
-I want 팀별로 별도의 OpenAI API 키를 생성하고 관리하여,
-so that 태그 없이도 비용이 자동으로 팀에 귀속되도록 할 수 있다.
+**As a** Team Admin,
+**I want** OpenAI Organization Admin API Key를 등록하고 프로젝트별 Project ID를 관리하여,
+**So that** Costs API로 organization 전체 비용을 조회하고 프로젝트별로 필터링할 수 있다.
+
+**우선순위:** Must Have
+**예상 시간:** 6시간
+**의존성:** Story 1.1 (KMS 인프라)
+
+---
 
 ## Acceptance Criteria
 
-1. 시스템은 "팀" 엔티티를 생성할 수 있어야 한다 (팀명, 담당자, 예산) (FR007)
-2. 각 팀에 대해 고유한 OpenAI API 키를 생성하고 관리할 수 있어야 한다 (FR007)
-3. 비용 데이터 수집 시 API 키를 기준으로 팀을 자동 식별해야 한다
-4. 홈 화면에 "팀별 비용 Top 5" 차트가 표시되어야 한다
-5. 팀 관리 페이지에서 API 키 생성, 조회, 비활성화를 할 수 있어야 한다
+1. ✅ Team Settings 페이지에 "Admin API Key" 등록 UI 구현
+2. ✅ Admin API Key KMS 암호화 후 OrganizationApiKey 테이블 저장
+3. ✅ Project Settings 페이지에 "OpenAI Project ID" 등록 UI 구현
+4. ✅ Project ID 형식 검증 (regex: `/^proj_[a-zA-Z0-9_-]+$/`)
+5. ✅ Project ID 유효성 검증 (Costs API test call with Admin Key)
+6. ✅ Project ID uniqueness 검증 (다른 프로젝트에서 이미 사용 중이면 reject)
+7. ✅ Team에 Admin Key 없으면 Project ID 등록 불가 (precondition)
+8. ✅ Audit log 기록 (admin_api_key_registered, openai_project_id_registered)
 
-## Tasks / Subtasks
+---
 
-- [x] Task 1: Team 데이터 모델 구현 (AC: #1)
-  - [x] Prisma schema에 Team, TeamMember 모델 추가 (이미 존재하는 경우 확인)
-  - [x] 팀 예산 필드 추가 (budget: Decimal)
-  - [x] 담당자 필드 (owner_id: String, FK to User)
-  - [x] Migration 생성 및 실행
+## Implementation Tasks
 
-- [x] Task 2: Team tRPC Router 구현 (AC: #1, #2, #5)
-  - [x] src/server/api/routers/team.ts 생성 또는 확장
-  - [x] team.create 프로시저 (팀 생성 + 기본 멤버 추가)
-  - [x] team.getAll 프로시저 (사용자 소속 팀 목록)
-  - [x] team.getById 프로시저 (팀 상세 정보 + API 키 목록)
-  - [x] team.update 프로시저 (팀 정보 수정)
-  - [x] team.generateApiKey 프로시저 (OpenAI API 키 생성, KMS 암호화)
-  - [x] team.listApiKeys 프로시저 (팀의 API 키 목록 조회)
-  - [x] team.disableApiKey 프로시저 (API 키 비활성화, audit log)
+### Backend (8 tasks)
 
-- [x] Task 3: API Key Manager Service 구현 (AC: #2)
-  - [x] src/lib/services/encryption/api-key-manager.ts 생성 또는 확장
-  - [x] generateEncryptedApiKey 함수 (KMS envelope encryption)
-  - [x] decryptApiKey 함수 (KMS envelope decryption)
-  - [x] validateApiKey 함수 (형식 검증)
-  - [x] OpenAI API 키 포맷 검증 (sk-proj-* 또는 sk-*)
+#### Task 1: Prisma Schema 확장
+- [ ] `prisma/schema.prisma` 수정
+  - [ ] OrganizationApiKey 모델 추가
+  - [ ] Team 모델에 organizationApiKey 관계 추가
+  - [ ] Project 모델에 openaiProjectId 필드 추가
+  - [ ] CostData 모델에 Costs API 필드 추가 (bucketStartTime, lineItem, apiVersion)
+- [ ] 마이그레이션 생성 및 실행: `bunx prisma migrate dev --name add_costs_api_support`
 
-- [x] Task 4: 팀 관리 페이지 UI 구현 (AC: #1, #5)
-  - [x] src/app/(dashboard)/teams/page.tsx 생성
-  - [x] 팀 목록 카드 표시 (팀명, 멤버 수, 총 비용)
-  - [x] "새 팀 생성" 버튼 및 모달
-  - [x] 팀 생성 폼 (팀명, 담당자 선택, 예산 설정)
-  - [x] 팀 상세 페이지 (teams/[teamId]/page.tsx)
-  - [x] API 키 관리 섹션 (생성, 조회, 복사, 비활성화)
-  - [x] API 키 표시: 마스킹 (sk-proj-****...****)
-  - [x] "API 키 생성" 버튼 (OpenAI API 키 입력 폼)
-  - [x] API 키 비활성화 확인 모달
+#### Task 2: Team tRPC Router - Admin API Key 관리
+- [ ] `src/server/api/routers/team.ts` 생성 또는 확장
+  - [ ] `registerAdminApiKey` procedure 구현
+    - [ ] 팀 멤버십 확인 (owner/admin만 허용)
+    - [ ] API 키 형식 검증 (sk-admin- 또는 sk-proj- with admin scope)
+    - [ ] KMS envelope encryption
+    - [ ] OrganizationApiKey upsert
+    - [ ] Audit log 생성
+  - [ ] `getAdminApiKeyStatus` procedure 구현
+    - [ ] 팀 멤버십 확인
+    - [ ] Admin Key 상태 조회 (last4, isActive, keyType, createdAt)
 
-- [x] Task 5: 비용 데이터 자동 귀속 로직 구현 (AC: #3)
-  - [x] src/app/api/cron/daily-batch/route.ts 수정
-  - [x] API 키별 팀 조회 로직 추가
-  - [x] CostData 저장 시 team_id 자동 설정
-  - [x] 이미 구현된 경우 동작 확인 및 테스트
+#### Task 3: Project tRPC Router - Project ID 관리
+- [ ] `src/server/api/routers/project.ts` 확장
+  - [ ] `registerOpenAIProjectId` procedure 구현
+    - [ ] 프로젝트 멤버십 확인
+    - [ ] Precondition: Team에 Admin Key 존재 확인
+    - [ ] Project ID 형식 검증 (regex)
+    - [ ] Uniqueness 검증
+    - [ ] Project 업데이트
+    - [ ] Audit log 생성
+  - [ ] `validateOpenAIProjectId` procedure 구현
+    - [ ] Costs API 테스트 호출 (Admin Key + Project ID)
+    - [ ] 접근 가능 여부 검증
+    - [ ] 에러 처리 (invalid, access denied)
 
-- [x] Task 6: 홈 화면 "팀별 비용 Top 5" 차트 추가 (AC: #4)
-  - [x] src/app/(dashboard)/page.tsx 수정
-  - [x] tRPC cost.getTeamCostsTopN 프로시저 생성 (최근 7일 팀별 비용)
-  - [x] Recharts BarChart 컴포넌트 추가
-  - [x] 팀명, 총 비용, 전주 대비 증감률 표시
-  - [x] 차트 클릭 시 팀 상세 페이지로 이동
+#### Task 4: API Key Manager Service 확장
+- [ ] `src/lib/services/encryption/api-key-manager.ts` 확장
+  - [ ] validateApiKey 함수 업데이트
+    - [ ] OpenAI Admin Key 형식 검증 (sk-admin-, sk-proj-)
+    - [ ] Project ID 형식 검증 추가
+  - [ ] encryptApiKey 함수 (기존 KMS 래퍼 재사용)
+  - [ ] decryptApiKey 함수
+  - [ ] maskApiKey 함수 (last4만 표시)
 
-- [x] Task 7: 통합 테스트 및 검증
-  - [x] 팀 생성 → API 키 생성 → 비용 데이터 수집 → 팀별 비용 표시 E2E 테스트
-  - [x] API 키 비활성화 시 비용 수집 차단 확인
-  - [x] 홈 화면 팀별 비용 차트 표시 확인
-  - [x] TypeScript type checking passed
-  - [x] Production build successful
+#### Task 5: Costs API Test Validator
+- [ ] `src/lib/services/openai/costs-api-validator.ts` 생성
+  - [ ] testCostsAPIAccess 함수
+    - [ ] Admin Key로 Costs API 호출
+    - [ ] project_ids 파라미터로 단일 Project ID 테스트
+    - [ ] 성공/실패 여부 반환
+    - [ ] 에러 메시지 매핑 (403, 404, 500)
+
+#### Task 6: Database Indexes 추가
+- [ ] OrganizationApiKey 인덱스
+  - [ ] `@@index([teamId])`
+  - [ ] `@@index([provider, isActive])`
+- [ ] Project 인덱스
+  - [ ] `@@index([openaiProjectId])`
+- [ ] CostData 인덱스
+  - [ ] `@@index([apiVersion])`
+  - [ ] `@@unique([projectId, bucketStartTime, bucketEndTime, lineItem, apiVersion])`
+
+#### Task 7: Error Handling 및 Logging
+- [ ] 모든 tRPC procedures에 try-catch 추가
+- [ ] Sentry 통합 (API 키 관련 에러)
+- [ ] Audit log 표준화
+  - [ ] actionType: admin_api_key_registered, openai_project_id_registered
+  - [ ] metadata: teamId, last4, openaiProjectId
+
+#### Task 8: Root tRPC Router 업데이트
+- [ ] `src/server/api/root.ts` 수정
+  - [ ] teamRouter 추가
+  - [ ] Export appRouter 업데이트
+
+---
+
+### Frontend (4 tasks)
+
+#### Task 9: Team Settings Page - Admin API Key UI
+- [ ] `src/app/(dashboard)/teams/[id]/settings/page.tsx` 생성
+  - [ ] Admin API Key 입력 폼
+    - [ ] Input type="password" (마스킹)
+    - [ ] Validation: 최소 20자
+    - [ ] Placeholder: "sk-admin-..."
+  - [ ] Key status 표시
+    - [ ] 등록 여부 Alert
+    - [ ] Last4, isActive, createdAt
+  - [ ] 등록/업데이트 버튼
+    - [ ] Loading state (Loader2 spinner)
+    - [ ] Success toast: "Admin API Key가 등록되었습니다 (ends with ...{last4})"
+    - [ ] Error toast: "Admin API Key 등록 실패: {error}"
+
+#### Task 10: Project Settings Page - Project ID UI
+- [ ] `src/app/(dashboard)/projects/[id]/settings/page.tsx` 확장
+  - [ ] OpenAI Project ID 섹션 추가
+  - [ ] Precondition Alert
+    - [ ] Team에 Admin Key 없으면 경고 메시지
+    - [ ] "Your team must register an Admin API Key first"
+  - [ ] Project ID 입력 폼
+    - [ ] Input placeholder: "proj_abc123..."
+    - [ ] Client-side validation (regex)
+    - [ ] Disabled if no Admin Key
+  - [ ] 유효성 검증 UI
+    - [ ] Loading state (2-3초 소요)
+    - [ ] 진행 메시지: "Validating Project ID with Costs API..."
+    - [ ] Success: "Project ID validated successfully"
+    - [ ] Error: "Access denied" | "Invalid format" | "Already registered"
+
+#### Task 11: UI Components
+- [ ] `src/components/settings/admin-key-section.tsx` 생성
+  - [ ] AdminKeyStatusAlert 컴포넌트
+  - [ ] AdminKeyForm 컴포넌트
+- [ ] `src/components/settings/project-id-section.tsx` 생성
+  - [ ] PreconditionAlert 컴포넌트
+  - [ ] ProjectIdForm 컴포넌트
+  - [ ] ValidationLoader 컴포넌트
+
+#### Task 12: Form Validation 및 Error Handling
+- [ ] Zod schema 정의
+  - [ ] adminApiKeySchema: z.string().min(20)
+  - [ ] projectIdSchema: z.string().regex(/^proj_[a-zA-Z0-9_-]+$/)
+- [ ] React Hook Form 통합
+  - [ ] useForm with zodResolver
+  - [ ] Field-level validation
+  - [ ] Submit 버튼 disabled state
+
+---
+
+### Testing (4 tasks)
+
+#### Task 13: Unit Tests
+- [ ] `api-key-manager.test.ts`
+  - [ ] validateApiKey 함수 테스트 (Admin Key, Project ID)
+  - [ ] encryptApiKey/decryptApiKey 테스트
+  - [ ] maskApiKey 테스트 (last4 반환 확인)
+- [ ] `costs-api-validator.test.ts`
+  - [ ] testCostsAPIAccess 함수 테스트 (MSW mock)
+  - [ ] Success case, error cases (403, 404)
+
+#### Task 14: Integration Tests
+- [ ] `team.router.test.ts`
+  - [ ] registerAdminApiKey 통합 테스트
+    - [ ] Owner/admin만 허용 확인
+    - [ ] KMS 암호화 검증
+    - [ ] Audit log 생성 확인
+  - [ ] getAdminApiKeyStatus 통합 테스트
+- [ ] `project.router.test.ts`
+  - [ ] registerOpenAIProjectId 통합 테스트
+    - [ ] Precondition 체크 (Admin Key 필수)
+    - [ ] Uniqueness 검증
+    - [ ] Audit log 확인
+  - [ ] validateOpenAIProjectId 통합 테스트
+
+#### Task 15: E2E Tests
+- [ ] Playwright E2E 시나리오
+  - [ ] 팀 생성 → Admin Key 등록 → 성공 메시지 확인
+  - [ ] 프로젝트 생성 → Project ID 등록 (Admin Key 있는 경우)
+  - [ ] Project ID 등록 실패 (Admin Key 없는 경우)
+  - [ ] Project ID 중복 등록 시도 → 에러 메시지 확인
+
+#### Task 16: Validation Scripts
+- [ ] `scripts/validate-openai-setup.ts` 생성
+  - [ ] validateTeamSetup 함수
+    - [ ] Team → Admin API Key 관계 확인
+    - [ ] Admin API Key 복호화 테스트
+    - [ ] Projects with openaiProjectId 확인
+  - [ ] validateAllTeams 함수
+  - [ ] CLI 실행: `bun run scripts/validate-openai-setup.ts`
+- [ ] `scripts/test-costs-api.ts` 생성
+  - [ ] testCostsAPI 함수 (team-level)
+  - [ ] CLI 실행: `bun run scripts/test-costs-api.ts <team-id>`
+
+---
+
+## Technical Details
+
+### 1. Data Models
+
+#### OrganizationApiKey Model (NEW)
+
+```prisma
+// Team-level Organization Admin API Key - Multi-Org Support
+model OrganizationApiKey {
+  id               String   @id @default(cuid())
+  teamId           String   @map("team_id")  // ✅ Removed @unique - now 1:N (team can have multiple org keys)
+  provider         String   // 'openai', 'anthropic', 'aws', 'azure'
+  organizationId   String?  @map("organization_id") // OpenAI: org_xxx, Anthropic: workspace_xxx
+
+  // KMS Envelope Encryption
+  encryptedKey     String   @map("encrypted_key") @db.Text
+  encryptedDataKey String   @map("encrypted_data_key") @db.Text
+  iv               String   // Initialization vector
+
+  // Security and Metadata
+  last4            String   @db.VarChar(4) // 마지막 4자리 (UI 표시용)
+  isActive         Boolean  @default(true) @map("is_active")
+  keyType          String   @default("admin") @map("key_type") // 'admin' | 'service_account'
+  displayName      String?  @map("display_name") // User-friendly name for UI
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, provider, organizationId], name: "unique_team_provider_org")
+  @@index([teamId])
+  @@index([provider, isActive])
+  @@map("organization_api_keys")
+}
+```
+
+#### Team Model Extension
+
+```prisma
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String?  @map("owner_id")
+  budget    Decimal? @db.Decimal(10, 2)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  members             TeamMember[]
+  projects            Project[]
+  organizationApiKeys OrganizationApiKey[] // ✅ 1:N 관계 (team can have multiple org keys)
+
+  @@index([ownerId])
+  @@map("teams")
+}
+```
+
+#### Project Model Extension
+
+```prisma
+model Project {
+  id          String   @id @default(cuid())
+  teamId      String   @map("team_id")
+  name        String
+  description String?
+
+  // 🆕 AI Provider Integration (Multi-Provider Support)
+  aiProvider       String?  @map("ai_provider")        // 'openai', 'anthropic', 'aws', 'azure'
+  aiOrganizationId String?  @map("ai_organization_id") // org_xxx, workspace_xxx, account_id, subscription_id
+  aiProjectId      String?  @map("ai_project_id")      // proj_xxx, project_xxx, application_id
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  team       Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  members    ProjectMember[]
+  apiKeys    ApiKey[]        // Deprecated: Usage API용
+  costData   CostData[]
+  metrics    ProjectMetrics?
+  costAlerts CostAlert[]
+
+  @@unique([aiProvider, aiOrganizationId, aiProjectId], name: "unique_provider_org_project")
+  @@index([teamId])
+  @@index([aiProvider, aiOrganizationId])
+  @@index([aiProjectId])
+  @@map("projects")
+}
+```
+
+#### CostData Model Extension
+
+```prisma
+model CostData {
+  id         String   @id @default(cuid())
+  projectId  String   @map("project_id")
+
+  // Deprecated: Usage API 전용
+  apiKeyId   String?  @map("api_key_id")
+  snapshotId String?  @map("snapshot_id")
+  tokens     Int?
+  model      String?
+
+  // Common fields
+  provider   String
+  service    String   // Usage API: 'gpt-4', Costs API: line_item
+  cost       Decimal  @db.Decimal(10, 2)
+  date       DateTime @db.Date
+
+  // Costs API specific
+  bucketStartTime DateTime? @map("bucket_start_time")
+  bucketEndTime   DateTime? @map("bucket_end_time")
+  lineItem        String?   @map("line_item")
+  currency        String?   @default("usd")
+  apiVersion      String    @default("usage_v1") @map("api_version") // 'usage_v1' | 'costs_v1'
+
+  // Novel Pattern 1: Context
+  taskType   String? @map("task_type")
+  userIntent String? @map("user_intent")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id])
+  apiKey  ApiKey? @relation(fields: [apiKeyId], references: [id])
+
+  @@unique([projectId, bucketStartTime, bucketEndTime, lineItem, apiVersion], name: "unique_cost_bucket")
+  @@unique([apiKeyId, date, snapshotId], name: "unique_usage_snapshot")
+  @@index([projectId, date])
+  @@index([apiVersion])
+  @@map("cost_data")
+}
+```
+
+---
+
+### 2. tRPC Procedures
+
+#### Team Router - Admin API Key Management
+
+**File:** `src/server/api/routers/team.ts`
+
+```typescript
+import { z } from "zod";
+import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+import { TRPCError } from "@trpc/server";
+import { getKMSEncryption } from "~/lib/services/encryption/kms-envelope";
+
+export const teamRouter = createTRPCRouter({
+  /**
+   * Register OpenAI Admin API Key for a team
+   *
+   * Requirements:
+   * - User must be team owner or admin
+   * - API Key format validation (sk-admin- or sk-proj- with admin scope)
+   * - KMS envelope encryption
+   * - Audit log creation
+   */
+  registerAdminApiKey: protectedProcedure
+    .input(
+      z.object({
+        teamId: z.string(),
+        apiKey: z.string().min(20),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      // 1. Verify team membership (owner/admin only)
+      const teamMember = await ctx.db.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId: input.teamId,
+            userId,
+          },
+        },
+      });
+
+      if (!teamMember || !["owner", "admin"].includes(teamMember.role)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only team owners/admins can register Admin API keys",
+        });
+      }
+
+      // 2. Validate API key format
+      const isValidFormat =
+        input.apiKey.startsWith("sk-admin-") ||
+        input.apiKey.startsWith("sk-proj-");
+
+      if (!isValidFormat) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Invalid OpenAI Admin API key format. Must start with 'sk-admin-' or 'sk-proj-'",
+        });
+      }
+
+      // 3. KMS envelope encryption
+      const kms = getKMSEncryption();
+      const { ciphertext, encryptedDataKey, iv } = await kms.encrypt(input.apiKey);
+
+      // 4. Extract last 4 characters for UI display
+      const last4 = input.apiKey.slice(-4);
+
+      // 5. Upsert OrganizationApiKey (update if exists, create if not)
+      const adminKey = await ctx.db.organizationApiKey.upsert({
+        where: { teamId: input.teamId },
+        update: {
+          encryptedKey: ciphertext,
+          encryptedDataKey,
+          iv,
+          last4,
+          isActive: true,
+          keyType: "admin",
+          updatedAt: new Date(),
+        },
+        create: {
+          teamId: input.teamId,
+          provider: "openai",
+          encryptedKey: ciphertext,
+          encryptedDataKey,
+          iv,
+          last4,
+          isActive: true,
+          keyType: "admin",
+        },
+      });
+
+      // 6. Create audit log
+      await ctx.db.auditLog.create({
+        data: {
+          userId,
+          actionType: "admin_api_key_registered",
+          resourceType: "organization_api_key",
+          resourceId: adminKey.id,
+          metadata: {
+            teamId: input.teamId,
+            last4,
+            action: adminKey.createdAt === adminKey.updatedAt ? "created" : "updated",
+          },
+        },
+      });
+
+      return {
+        success: true,
+        keyId: adminKey.id,
+        last4: adminKey.last4,
+      };
+    }),
+
+  /**
+   * Get Admin API Key status for a team
+   *
+   * Returns:
+   * - Key ID, last4, isActive, keyType, timestamps
+   * - null if no Admin Key registered
+   */
+  getAdminApiKeyStatus: protectedProcedure
+    .input(z.object({ teamId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      // Verify team membership
+      const teamMember = await ctx.db.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId: input.teamId,
+            userId,
+          },
+        },
+      });
+
+      if (!teamMember) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You are not a member of this team",
+        });
+      }
+
+      // Query Admin API Key
+      const adminKey = await ctx.db.organizationApiKey.findUnique({
+        where: { teamId: input.teamId },
+        select: {
+          id: true,
+          last4: true,
+          isActive: true,
+          keyType: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      return adminKey;
+    }),
+});
+```
+
+---
+
+#### Project Router - Project ID Management
+
+**File:** `src/server/api/routers/project.ts` (extension)
+
+```typescript
+export const projectRouter = createTRPCRouter({
+  // ... existing procedures
+
+  /**
+   * Register OpenAI Project ID for a project
+   *
+   * Requirements:
+   * - User must be project member
+   * - Team must have active Admin API Key (precondition)
+   * - Project ID format: /^proj_[a-zA-Z0-9_-]+$/
+   * - Project ID uniqueness check
+   */
+  registerOpenAIProjectId: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        openaiProjectId: z.string().regex(
+          /^proj_[a-zA-Z0-9_-]+$/,
+          "OpenAI Project ID must start with 'proj_' and contain only alphanumeric characters, hyphens, and underscores"
+        ),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      // 1. Verify project membership
+      const projectMember = await ctx.db.projectMember.findUnique({
+        where: {
+          projectId_userId: {
+            projectId: input.projectId,
+            userId,
+          },
+        },
+        include: {
+          project: {
+            include: {
+              team: {
+                include: {
+                  organizationApiKey: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!projectMember) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You are not a member of this project",
+        });
+      }
+
+      // 2. Precondition: Team must have active Admin API Key
+      const adminKey = projectMember.project.team.organizationApiKey;
+
+      if (!adminKey || !adminKey.isActive) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Team must have an active Admin API Key before registering Project IDs. Please contact your team admin.",
+        });
+      }
+
+      // 3. Check OpenAI Project ID uniqueness
+      const existingProject = await ctx.db.project.findUnique({
+        where: { openaiProjectId: input.openaiProjectId },
+      });
+
+      if (existingProject && existingProject.id !== input.projectId) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `This OpenAI Project ID is already registered to project "${existingProject.name}"`,
+        });
+      }
+
+      // 4. Update project with OpenAI Project ID
+      const updatedProject = await ctx.db.project.update({
+        where: { id: input.projectId },
+        data: {
+          openaiProjectId: input.openaiProjectId,
+        },
+      });
+
+      // 5. Create audit log
+      await ctx.db.auditLog.create({
+        data: {
+          userId,
+          actionType: "openai_project_id_registered",
+          resourceType: "project",
+          resourceId: updatedProject.id,
+          metadata: {
+            openaiProjectId: input.openaiProjectId,
+            teamId: projectMember.project.teamId,
+            projectName: updatedProject.name,
+          },
+        },
+      });
+
+      return {
+        success: true,
+        projectId: updatedProject.id,
+        openaiProjectId: updatedProject.openaiProjectId,
+      };
+    }),
+
+  /**
+   * Validate OpenAI Project ID belongs to the team's organization
+   *
+   * This procedure tests if the Project ID is accessible via the team's Admin API Key
+   * by making a test call to the Costs API.
+   */
+  validateOpenAIProjectId: protectedProcedure
+    .input(
+      z.object({
+        teamId: z.string(),
+        openaiProjectId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      // 1. Verify team membership
+      const teamMember = await ctx.db.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId: input.teamId,
+            userId,
+          },
+        },
+      });
+
+      if (!teamMember) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You are not a member of this team",
+        });
+      }
+
+      // 2. Get team's Admin API Key
+      const adminKey = await ctx.db.organizationApiKey.findUnique({
+        where: { teamId: input.teamId },
+      });
+
+      if (!adminKey || !adminKey.isActive) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Team does not have an active Admin API Key",
+        });
+      }
+
+      // 3. Decrypt Admin API Key
+      const kms = getKMSEncryption();
+      const decryptedKey = await kms.decrypt(
+        adminKey.encryptedKey,
+        adminKey.encryptedDataKey,
+        adminKey.iv
+      );
+
+      // 4. Test Costs API access with this Project ID
+      try {
+        const url = new URL("https://api.openai.com/v1/organization/costs");
+
+        // Use a small time range (yesterday)
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const startTime = Math.floor(yesterday.setHours(0, 0, 0, 0) / 1000);
+        const endTime = Math.floor(yesterday.setHours(23, 59, 59, 999) / 1000);
+
+        url.searchParams.set("start_time", startTime.toString());
+        url.searchParams.set("end_time", endTime.toString());
+        url.searchParams.set("bucket_width", "1d");
+        url.searchParams.set("limit", "1");
+        url.searchParams.append("project_ids", input.openaiProjectId);
+
+        const response = await fetch(url.toString(), {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${decryptedKey}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+
+          if (response.status === 403) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Access denied: This Project ID does not belong to your organization or Admin Key lacks permissions",
+            });
+          }
+
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Costs API validation failed (${response.status}): ${errorText}`,
+          });
+        }
+
+        return {
+          valid: true,
+          message: "Project ID validated successfully with Costs API",
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Validation error: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    }),
+});
+```
+
+---
+
+### 3. UI Mockups and Implementation
+
+#### Team Settings Page - Admin API Key Registration
+
+**File:** `src/app/(dashboard)/teams/[id]/settings/page.tsx`
+
+**UI Layout:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Team Settings                                               │
+│ Manage team-level OpenAI configuration                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ OpenAI Admin API Key                                        │
+│ ┌───────────────────────────────────────────────────────┐  │
+│ │ ℹ️ Admin API Key registered (ends with ...abc1)       │  │
+│ │ Status: Active                                         │  │
+│ │ Registered: 2025-01-04 10:30 AM                       │  │
+│ └───────────────────────────────────────────────────────┘  │
+│                                                             │
+│ Admin API Key                                               │
+│ [••••••••••••••••••••••••••••••••••••••]                   │
+│ This key must have admin permissions for your OpenAI       │
+│ organization                                                │
+│                                                             │
+│ [Update Admin API Key]                                      │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Features:**
+- Password input (masked)
+- Status alert (registered or not)
+- Last4 display
+- Update/Register button (conditional)
+- Success toast: "Admin API Key가 등록되었습니다 (ends with ...{last4})"
+- Error toast: "Admin API Key 등록 실패: {error message}"
+
+---
+
+#### Project Settings Page - OpenAI Project ID Registration
+
+**File:** `src/app/(dashboard)/projects/[id]/settings/page.tsx`
+
+**UI Layout:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Project Settings                                            │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ OpenAI Project ID                                           │
+│ ┌───────────────────────────────────────────────────────┐  │
+│ │ ⚠️ Your team must register an Admin API Key before    │  │
+│ │ adding Project IDs.                                    │  │
+│ └───────────────────────────────────────────────────────┘  │
+│                                                             │
+│ OpenAI Project ID                                           │
+│ [proj_abc123...]                              [Disabled]    │
+│ Find this in your OpenAI project settings                  │
+│                                                             │
+│ [Register Project ID]  (Disabled)                           │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**With Admin Key registered:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ OpenAI Project ID                                           │
+│ ┌───────────────────────────────────────────────────────┐  │
+│ │ ℹ️ OpenAI Project ID: proj_abc123456                  │  │
+│ └───────────────────────────────────────────────────────┘  │
+│                                                             │
+│ OpenAI Project ID                                           │
+│ [proj_def789...]                                            │
+│ Find this in your OpenAI project settings                  │
+│                                                             │
+│ [Validate & Register]  ⏳ Validating...                     │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Features:**
+- Precondition alert (Admin Key required)
+- Input disabled if no Admin Key
+- Validation loading state (2-3초)
+- Progress message: "Validating Project ID with Costs API..."
+- Success toast: "Project ID가 등록되었습니다. 내일부터 비용 데이터가 수집됩니다."
+- Error toasts:
+  - "Invalid format: Project ID must start with 'proj_'"
+  - "Access denied: This Project ID does not belong to your organization"
+  - "Already registered: This Project ID is used by another project"
+
+---
+
+### 4. Validation Logic
+
+#### Admin API Key Format Validation
+
+```typescript
+// src/lib/services/encryption/api-key-manager.ts
+
+export function validateAdminApiKey(apiKey: string): boolean {
+  // OpenAI Admin API Keys start with:
+  // - sk-admin-... (organization admin)
+  // - sk-proj-... (project key with admin scope)
+
+  const adminKeyPattern = /^sk-(admin|proj)-[a-zA-Z0-9_-]{20,}$/;
+  return adminKeyPattern.test(apiKey);
+}
+```
+
+#### Project ID Format Validation
+
+```typescript
+// src/lib/services/openai/project-id-validator.ts
+
+export function validateProjectIdFormat(projectId: string): {
+  valid: boolean;
+  error?: string;
+} {
+  const projectIdPattern = /^proj_[a-zA-Z0-9_-]+$/;
+
+  if (!projectIdPattern.test(projectId)) {
+    return {
+      valid: false,
+      error: "Project ID must start with 'proj_' and contain only alphanumeric characters, hyphens, and underscores",
+    };
+  }
+
+  if (projectId.length < 10) {
+    return {
+      valid: false,
+      error: "Project ID is too short (minimum 10 characters)",
+    };
+  }
+
+  return { valid: true };
+}
+```
+
+#### Costs API Test Validation
+
+```typescript
+// src/lib/services/openai/costs-api-validator.ts
+
+import { retryWithBackoff } from "~/lib/utils/retry";
+
+interface CostsAPITestResult {
+  valid: boolean;
+  error?: string;
+  statusCode?: number;
+}
+
+export async function testCostsAPIAccess(
+  adminApiKey: string,
+  projectId: string,
+): Promise<CostsAPITestResult> {
+  try {
+    const url = new URL("https://api.openai.com/v1/organization/costs");
+
+    // Use yesterday's date for test
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const startTime = Math.floor(yesterday.setHours(0, 0, 0, 0) / 1000);
+    const endTime = Math.floor(yesterday.setHours(23, 59, 59, 999) / 1000);
+
+    url.searchParams.set("start_time", startTime.toString());
+    url.searchParams.set("end_time", endTime.toString());
+    url.searchParams.set("bucket_width", "1d");
+    url.searchParams.set("limit", "1");
+    url.searchParams.append("project_ids", projectId);
+
+    const response = await retryWithBackoff(
+      () =>
+        fetch(url.toString(), {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${adminApiKey}`,
+            "Content-Type": "application/json",
+          },
+        }),
+      { maxRetries: 2, context: "Costs API test" }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+
+      return {
+        valid: false,
+        error: mapCostsAPIError(response.status, errorText),
+        statusCode: response.status,
+      };
+    }
+
+    return { valid: true };
+  } catch (error) {
+    return {
+      valid: false,
+      error: `Network error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+function mapCostsAPIError(statusCode: number, errorText: string): string {
+  switch (statusCode) {
+    case 401:
+      return "Invalid Admin API Key: Authentication failed";
+    case 403:
+      return "Access denied: This Project ID does not belong to your organization or Admin Key lacks permissions";
+    case 404:
+      return "Project ID not found in your organization";
+    case 429:
+      return "Rate limit exceeded: Please try again in a few minutes";
+    case 500:
+    case 502:
+    case 503:
+      return "OpenAI API is temporarily unavailable. Please try again later.";
+    default:
+      return `API error (${statusCode}): ${errorText}`;
+  }
+}
+```
+
+---
+
+### 5. Error Handling
+
+#### Precondition Failures
+
+```typescript
+// Team에 Admin Key가 없는 경우
+throw new TRPCError({
+  code: "PRECONDITION_FAILED",
+  message: "Team must have an active Admin API Key before registering Project IDs. Please contact your team admin.",
+});
+```
+
+**UI Display:**
+```
+⚠️ Your team must register an Admin API Key before adding Project IDs.
+Go to Team Settings → OpenAI Admin API Key to register.
+```
+
+#### Uniqueness Violations
+
+```typescript
+// Project ID가 이미 다른 프로젝트에 등록된 경우
+if (existingProject && existingProject.id !== input.projectId) {
+  throw new TRPCError({
+    code: "CONFLICT",
+    message: `This OpenAI Project ID is already registered to project "${existingProject.name}"`,
+  });
+}
+```
+
+**UI Display:**
+```
+❌ This OpenAI Project ID is already registered to project "Marketing Campaign".
+Each Project ID can only be used once.
+```
+
+#### Access Denied
+
+```typescript
+// Costs API 접근 거부 (403)
+if (response.status === 403) {
+  throw new TRPCError({
+    code: "FORBIDDEN",
+    message: "Access denied: This Project ID does not belong to your organization or Admin Key lacks permissions",
+  });
+}
+```
+
+**UI Display:**
+```
+❌ Access denied: This Project ID does not belong to your organization.
+Please verify:
+1. The Project ID is correct
+2. Your Admin API Key has organization-level permissions
+3. The Project belongs to the same OpenAI organization
+```
+
+---
+
+### 6. Security Considerations
+
+#### KMS Encryption Flow
+
+```
+User enters Admin API Key
+  ↓
+[1] Client sends to tRPC (HTTPS encrypted)
+  ↓
+[2] Server validates format
+  ↓
+[3] KMS Envelope Encryption:
+    - Generate Data Encryption Key (DEK)
+    - Encrypt Admin Key with DEK (AES-256-GCM)
+    - Encrypt DEK with KMS Master Key
+    - Store: encryptedKey, encryptedDataKey, IV
+  ↓
+[4] Save to OrganizationApiKey table
+  ↓
+[5] Extract last4 for UI display
+  ↓
+[6] Create audit log (no plaintext key)
+  ↓
+[7] Return success + last4 to client
+```
+
+**Security Properties:**
+- ✅ Plaintext key never stored in database
+- ✅ KMS Master Key never leaves AWS
+- ✅ DEK unique per encryption operation
+- ✅ IV randomized per encryption
+- ✅ Authenticated encryption (AES-256-GCM)
+- ✅ Audit trail for all key operations
+
+#### Audit Log Schema
+
+```typescript
+// Audit log for Admin API Key registration
+{
+  userId: string;              // Who performed the action
+  actionType: "admin_api_key_registered";
+  resourceType: "organization_api_key";
+  resourceId: string;          // OrganizationApiKey.id
+  metadata: {
+    teamId: string;
+    last4: string;             // Safe to log (last 4 chars only)
+    action: "created" | "updated";
+  };
+  createdAt: DateTime;
+}
+
+// Audit log for Project ID registration
+{
+  userId: string;
+  actionType: "openai_project_id_registered";
+  resourceType: "project";
+  resourceId: string;          // Project.id
+  metadata: {
+    openaiProjectId: string;   // Safe to log (not a secret)
+    teamId: string;
+    projectName: string;
+  };
+  createdAt: DateTime;
+}
+```
+
+#### Admin-Only Operations
+
+**Permission Model:**
+
+| Operation | Required Role | Check Location |
+|-----------|---------------|----------------|
+| Register Admin API Key | Team Owner/Admin | `teamRouter.registerAdminApiKey` |
+| View Admin API Key Status | Team Member | `teamRouter.getAdminApiKeyStatus` (last4 only) |
+| Register Project ID | Project Member | `projectRouter.registerOpenAIProjectId` |
+| Validate Project ID | Team Member | `projectRouter.validateOpenAIProjectId` |
+
+**Authorization Flow:**
+
+```typescript
+// 1. Check team membership
+const teamMember = await ctx.db.teamMember.findUnique({
+  where: { teamId_userId: { teamId, userId } },
+});
+
+if (!teamMember) {
+  throw new TRPCError({ code: "FORBIDDEN", message: "Not a team member" });
+}
+
+// 2. Check role for sensitive operations
+if (!["owner", "admin"].includes(teamMember.role)) {
+  throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+}
+```
+
+---
+
+### 7. Testing Strategy
+
+#### Unit Tests
+
+**File:** `src/lib/services/encryption/api-key-manager.test.ts`
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { validateAdminApiKey, validateProjectIdFormat } from "./api-key-manager";
+
+describe("Admin API Key Validation", () => {
+  it("should accept valid Admin API Keys", () => {
+    expect(validateAdminApiKey("sk-admin-abc123def456ghi789")).toBe(true);
+    expect(validateAdminApiKey("sk-proj-xyz789abc123def456")).toBe(true);
+  });
+
+  it("should reject invalid formats", () => {
+    expect(validateAdminApiKey("sk-abc123")).toBe(false); // Missing admin/proj prefix
+    expect(validateAdminApiKey("admin-abc123")).toBe(false); // Missing sk- prefix
+    expect(validateAdminApiKey("sk-admin-short")).toBe(false); // Too short
+  });
+});
+
+describe("Project ID Validation", () => {
+  it("should accept valid Project IDs", () => {
+    const result = validateProjectIdFormat("proj_abc123def456");
+    expect(result.valid).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("should reject invalid formats", () => {
+    const result1 = validateProjectIdFormat("abc123"); // Missing proj_ prefix
+    expect(result1.valid).toBe(false);
+    expect(result1.error).toContain("must start with 'proj_'");
+
+    const result2 = validateProjectIdFormat("proj_ab"); // Too short
+    expect(result2.valid).toBe(false);
+    expect(result2.error).toContain("too short");
+  });
+});
+```
+
+#### Integration Tests
+
+**File:** `src/server/api/routers/team.test.ts`
+
+```typescript
+import { describe, it, expect, beforeEach } from "vitest";
+import { appRouter } from "~/server/api/root";
+import { createInnerTRPCContext } from "~/server/api/trpc";
+import { db } from "~/server/db";
+
+describe("Team Router - Admin API Key", () => {
+  let caller: ReturnType<typeof appRouter.createCaller>;
+  let teamId: string;
+  let ownerId: string;
+
+  beforeEach(async () => {
+    // Setup test data
+    const user = await db.user.create({
+      data: { email: "test@example.com", name: "Test User" },
+    });
+    ownerId = user.id;
+
+    const team = await db.team.create({
+      data: { name: "Test Team", ownerId },
+    });
+    teamId = team.id;
+
+    await db.teamMember.create({
+      data: { teamId, userId: ownerId, role: "owner" },
+    });
+
+    const ctx = createInnerTRPCContext({ session: { user } });
+    caller = appRouter.createCaller(ctx);
+  });
+
+  it("should register Admin API Key successfully", async () => {
+    const result = await caller.team.registerAdminApiKey({
+      teamId,
+      apiKey: "sk-admin-test123456789012345",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.last4).toBe("2345");
+
+    // Verify database
+    const adminKey = await db.organizationApiKey.findUnique({
+      where: { teamId },
+    });
+
+    expect(adminKey).toBeDefined();
+    expect(adminKey?.isActive).toBe(true);
+    expect(adminKey?.keyType).toBe("admin");
+  });
+
+  it("should reject non-owner/admin users", async () => {
+    const normalUser = await db.user.create({
+      data: { email: "normal@example.com", name: "Normal User" },
+    });
+
+    await db.teamMember.create({
+      data: { teamId, userId: normalUser.id, role: "member" },
+    });
+
+    const ctx = createInnerTRPCContext({ session: { user: normalUser } });
+    const normalCaller = appRouter.createCaller(ctx);
+
+    await expect(
+      normalCaller.team.registerAdminApiKey({
+        teamId,
+        apiKey: "sk-admin-test123456789012345",
+      })
+    ).rejects.toThrow("Only team owners/admins can register Admin API keys");
+  });
+});
+```
+
+#### E2E Tests
+
+**File:** `tests/e2e/admin-key-registration.spec.ts`
+
+```typescript
+import { test, expect } from "@playwright/test";
+
+test.describe("Admin API Key Registration Flow", () => {
+  test("should register Admin API Key and Project ID", async ({ page }) => {
+    // 1. Login
+    await page.goto("/login");
+    await page.fill('input[name="email"]', "test@example.com");
+    await page.fill('input[name="password"]', "password123");
+    await page.click('button[type="submit"]');
+
+    // 2. Create team
+    await page.goto("/teams");
+    await page.click('button:has-text("Create Team")');
+    await page.fill('input[name="name"]', "E2E Test Team");
+    await page.click('button:has-text("Create")');
+
+    // 3. Navigate to Team Settings
+    await page.click('a:has-text("Settings")');
+
+    // 4. Register Admin API Key
+    await page.fill('input[id="apiKey"]', "sk-admin-e2etest123456789");
+    await page.click('button:has-text("Register Admin API Key")');
+
+    // 5. Verify success toast
+    await expect(page.locator('text=Admin API Key가 등록되었습니다')).toBeVisible();
+    await expect(page.locator('text=ends with ...6789')).toBeVisible();
+
+    // 6. Create project
+    await page.goto("/projects");
+    await page.click('button:has-text("Create Project")');
+    await page.fill('input[name="name"]', "E2E Test Project");
+    await page.click('button:has-text("Create")');
+
+    // 7. Navigate to Project Settings
+    await page.click('a:has-text("Settings")');
+
+    // 8. Register Project ID
+    await page.fill('input[id="openaiProjectId"]', "proj_e2etest123");
+    await page.click('button:has-text("Register Project ID")');
+
+    // 9. Wait for validation
+    await expect(page.locator('text=Validating Project ID')).toBeVisible();
+
+    // 10. Verify success (or validation failure in test env)
+    // Note: In test environment, Costs API call will fail without real credentials
+    // This test verifies UI flow, not actual API integration
+  });
+
+  test("should show precondition alert when no Admin Key", async ({ page }) => {
+    // 1. Login and create team (without Admin Key)
+    await page.goto("/login");
+    // ... login steps ...
+
+    // 2. Create project
+    await page.goto("/projects");
+    await page.click('button:has-text("Create Project")');
+    // ... project creation ...
+
+    // 3. Go to Project Settings
+    await page.click('a:has-text("Settings")');
+
+    // 4. Verify precondition alert
+    await expect(
+      page.locator('text=Your team must register an Admin API Key')
+    ).toBeVisible();
+
+    // 5. Verify Project ID input is disabled
+    const input = page.locator('input[id="openaiProjectId"]');
+    await expect(input).toBeDisabled();
+  });
+});
+```
+
+#### Validation Scripts
+
+**File:** `scripts/validate-openai-setup.ts`
+
+```typescript
+import { db } from "~/server/db";
+import { getKMSEncryption } from "~/lib/services/encryption/kms-envelope";
+import pino from "pino";
+
+const logger = pino({ name: "validate-openai-setup" });
+
+async function validateTeamSetup(teamId: string) {
+  const issues: string[] = [];
+
+  // 1. Team 존재 확인
+  const team = await db.team.findUnique({
+    where: { id: teamId },
+    include: {
+      organizationApiKey: true,
+      projects: {
+        select: {
+          id: true,
+          name: true,
+          openaiProjectId: true,
+        },
+      },
+    },
+  });
+
+  if (!team) {
+    issues.push(`Team ${teamId} not found`);
+    return { valid: false, issues };
+  }
+
+  // 2. Admin API Key 확인
+  if (!team.organizationApiKey) {
+    issues.push(`Team "${team.name}" has no Admin API Key`);
+  } else if (!team.organizationApiKey.isActive) {
+    issues.push(`Team "${team.name}" Admin API Key is inactive`);
+  }
+
+  // 3. Admin API Key 복호화 테스트
+  if (team.organizationApiKey) {
+    try {
+      const kms = getKMSEncryption();
+      await kms.decrypt(
+        team.organizationApiKey.encryptedKey,
+        team.organizationApiKey.encryptedDataKey,
+        team.organizationApiKey.iv
+      );
+      logger.info({ teamId }, "Admin API Key decryption successful");
+    } catch (error) {
+      issues.push(`Failed to decrypt Admin API Key: ${error}`);
+    }
+  }
+
+  // 4. Projects with OpenAI Project ID 확인
+  const projectsWithId = team.projects.filter(p => p.openaiProjectId);
+  if (projectsWithId.length === 0) {
+    issues.push(`Team "${team.name}" has no projects with OpenAI Project ID`);
+  }
+
+  logger.info({
+    teamId,
+    teamName: team.name,
+    hasAdminKey: !!team.organizationApiKey,
+    projectCount: team.projects.length,
+    projectsWithId: projectsWithId.length,
+  }, "Team validation completed");
+
+  return {
+    valid: issues.length === 0,
+    issues,
+  };
+}
+
+async function validateAllTeams() {
+  const teams = await db.team.findMany({
+    select: { id: true, name: true },
+  });
+
+  logger.info({ teamCount: teams.length }, "Validating all teams");
+
+  for (const team of teams) {
+    const result = await validateTeamSetup(team.id);
+
+    if (!result.valid) {
+      logger.warn({ teamId: team.id, teamName: team.name, issues: result.issues }, "❌ Validation failed");
+    } else {
+      logger.info({ teamId: team.id, teamName: team.name }, "✅ Validation passed");
+    }
+  }
+}
+
+// CLI execution
+if (require.main === module) {
+  validateAllTeams()
+    .then(() => {
+      logger.info("All teams validated");
+      process.exit(0);
+    })
+    .catch(error => {
+      logger.error({ error }, "Validation script failed");
+      process.exit(1);
+    });
+}
+```
+
+**Usage:**
+```bash
+# Validate all teams
+bun run scripts/validate-openai-setup.ts
+
+# Output:
+# ✅ Team "Engineering" - Admin Key OK, 3 projects with Project IDs
+# ❌ Team "Marketing" - No Admin API Key registered
+# ✅ Team "Sales" - Admin Key OK, 1 project with Project ID
+```
+
+---
 
 ## Dev Notes
 
 ### Architecture Patterns and Constraints
 
-**Novel Pattern 2: 아키텍처 기반 귀속** (architecture.md:14-17, tech-spec-epic-1.md:56-57)
+**Novel Pattern 2 (Revised): Team-level Admin Key + Project ID Filtering**
+
 ```
 핵심 차별화 요소:
-- 태그 대신 API 키 격리로 팀별 비용 자동 귀속
-- 팀당 1개의 OpenAI API 키 사용 (강제)
-- API 키를 기준으로 비용 데이터 자동 식별
+- Team 레벨 Admin API Key로 organization 전체 비용 조회
+- Project ID 필터링으로 프로젝트별 비용 구분
+- Costs API의 시간 버킷 집계 데이터 활용
+- 태그 불필요 (architecture-based attribution)
 ```
 
-**Team 데이터 모델** (tech-spec-epic-1.md:101-112)
-```prisma
-model Team {
-  id         String   @id @default(cuid())
-  name       String
-  created_at DateTime @default(now())
+**Data Flow:**
 
-  members    TeamMember[]
-  api_keys   ApiKey[]
-  cost_data  CostData[]
-
-  @@map("teams")
-}
+```
+Team created
+  → Team admin registers OpenAI Organization Admin API Key (Team Settings)
+  → KMS encrypts → OrganizationApiKey table
+  → Project created under team
+  → Project admin registers OpenAI Project ID (Project Settings)
+  → System validates Project ID via Costs API test call
+  → Daily Cron (9am KST)
+    → Cost Collector V2 loads team's Admin Key
+    → Calls Costs API with project_ids[] filter
+    → Maps openai_project_id → internal project_id
+    → Stores in CostData with apiVersion='costs_v1'
+  → Team-level dashboard aggregates all projects automatically
 ```
 
-**Story 1.7 추가 필드 (epics.md:190):**
-- 팀명 (name)
-- 담당자 (owner_id: String, FK to User)
-- 예산 (budget: Decimal)
+**Permissions Model:**
 
-**API Key Manager** (tech-spec-epic-1.md:76)
-```typescript
-// src/lib/services/encryption/api-key-manager.ts
-// Inputs: Plain API Key, Team ID
-// Outputs: Encrypted Key Record (encrypted_key, encrypted_data_key, iv)
-// Uses: AWS KMS Envelope Encryption (AES-256-GCM)
-```
+| Role | Team Settings | Project Settings |
+|------|---------------|------------------|
+| Team Owner/Admin | Register/update Admin API Key, view status | View all projects, register Project IDs |
+| Team Member | View Admin Key status (last4 only) | View own projects |
+| Project Member | N/A | Register/update Project ID for assigned projects |
 
-**Team tRPC Router** (tech-spec-epic-1.md:267-283)
-```typescript
-// src/server/api/routers/team.ts
-export const teamRouter = createTRPCRouter({
-  create: protectedProcedure
-    .input(z.object({ name: z.string() }))
-    .mutation(async ({ input, ctx }) => {
-      // 팀 생성 + OpenAI API 키 발급 (Novel Pattern 2)
-    }),
+### Project Structure
 
-  generateApiKey: protectedProcedure
-    .input(z.object({
-      teamId: z.string(),
-      provider: z.literal("openai")
-    }))
-    .mutation(async ({ input, ctx }) => {
-      // KMS 암호화 후 저장
-    })
-});
-```
-
-**비용 데이터 자동 귀속** (tech-spec-epic-1.md:374-388)
-```
-매일 오전 9시 KST (Vercel Cron)
-  → GET /api/cron/daily-batch
-  → 모든 팀의 API 키 조회 (teams.api_keys)
-  → For each API key:
-      → OpenAI API 호출 (전일 데이터)
-      → cost_data 테이블에 저장 (team_id 자동 귀속)
-```
-
-**Assumption 1: OpenAI API 키는 팀당 1개만 사용** (tech-spec-epic-1.md:777-779)
-- Novel Pattern 2 (아키텍처 기반 귀속) 구현
-- UI에서 팀당 1개 API 키만 생성 가능하도록 강제
-- 기존 API 키가 있으면 "이미 API 키가 존재합니다" 메시지 표시
-
-### Project Structure Notes
-
-**Alignment with Architecture:**
-- Team Router: `src/server/api/routers/team.ts` (architecture.md:97)
-- API Key Manager: `src/lib/services/encryption/api-key-manager.ts` (architecture.md:112, tech-spec-epic-1.md:158)
-- Team Management UI: `src/app/(dashboard)/teams/` (architecture.md:81)
-- Daily Batch Cron: `src/app/api/cron/daily-batch/` (architecture.md:87, Story 1.2에서 생성됨)
-- Home Dashboard: `src/app/(dashboard)/page.tsx` (architecture.md:79, Story 1.8에서 생성됨)
-
-**Source Tree Components to Touch:**
+**New Files:**
 
 ```
 finops-for-ai/
 ├── prisma/
-│   └── schema.prisma                            # UPDATE: Team 모델에 owner_id, budget 추가
+│   ├── schema.prisma                                    # UPDATE: Add OrganizationApiKey, Project.openaiProjectId
+│   └── migrations/
+│       └── [timestamp]_add_costs_api_support/
+│           └── migration.sql                            # NEW: Schema migration
 ├── src/
 │   ├── app/
-│   │   ├── (dashboard)/
-│   │   │   ├── page.tsx                         # UPDATE: 팀별 비용 Top 5 차트 추가 (AC #4)
-│   │   │   └── teams/
-│   │   │       ├── page.tsx                     # NEW: 팀 목록 페이지 (AC #1, #5)
-│   │   │       └── [teamId]/
-│   │   │           └── page.tsx                 # NEW: 팀 상세 + API 키 관리 (AC #2, #5)
-│   │   └── api/
-│   │       └── cron/
-│   │           └── daily-batch/
-│   │               └── route.ts                 # UPDATE: team_id 자동 귀속 (AC #3)
+│   │   └── (dashboard)/
+│   │       ├── teams/
+│   │       │   └── [id]/
+│   │       │       └── settings/
+│   │       │           └── page.tsx                     # NEW: Team Settings (Admin Key)
+│   │       └── projects/
+│   │           └── [id]/
+│   │               └── settings/
+│   │                   └── page.tsx                     # UPDATE: Add Project ID section
 │   ├── server/
 │   │   └── api/
 │   │       ├── routers/
-│   │       │   ├── team.ts                      # NEW: Team tRPC router (AC #1, #2, #5)
-│   │       │   ├── cost.ts                      # UPDATE: getTeamCostsTopN 추가 (AC #4)
-│   │       │   └── root.ts                      # UPDATE: teamRouter 추가
-│   │       └── trpc.ts                          # REUSE: protectedProcedure
+│   │       │   ├── team.ts                              # NEW: Team router (Admin Key)
+│   │       │   ├── project.ts                           # UPDATE: Add Project ID procedures
+│   │       │   └── root.ts                              # UPDATE: Add teamRouter
+│   │       └── trpc.ts                                  # REUSE: protectedProcedure
 │   ├── lib/
 │   │   └── services/
-│   │       └── encryption/
-│   │           ├── kms-envelope.ts              # REUSE: Story 1.1, 1.2에서 생성
-│   │           └── api-key-manager.ts           # NEW: API 키 암호화/복호화 (AC #2)
+│   │       ├── encryption/
+│   │       │   ├── kms-envelope.ts                      # REUSE: From Story 1.1
+│   │       │   └── api-key-manager.ts                   # UPDATE: Add Admin Key validation
+│   │       └── openai/
+│   │           ├── costs-api-validator.ts               # NEW: Costs API test validator
+│   │           └── project-id-validator.ts              # NEW: Project ID validation
 │   └── components/
-│       ├── charts/
-│       │   └── team-costs-bar-chart.tsx         # NEW: 팀별 비용 차트 (AC #4)
-│       └── dashboard/
-│           └── team-management/
-│               ├── team-list-card.tsx           # NEW: 팀 목록 카드
-│               ├── create-team-modal.tsx        # NEW: 팀 생성 모달
-│               └── api-key-section.tsx          # NEW: API 키 관리 섹션
+│       └── settings/
+│           ├── admin-key-section.tsx                    # NEW: Admin Key UI component
+│           └── project-id-section.tsx                   # NEW: Project ID UI component
+└── scripts/
+    ├── validate-openai-setup.ts                         # NEW: Validation script
+    └── test-costs-api.ts                                # NEW: Costs API test script
 ```
 
-**Key Files to Create:**
-1. `src/server/api/routers/team.ts` - Team CRUD + API 키 관리 tRPC router
-2. `src/lib/services/encryption/api-key-manager.ts` - API 키 암호화/복호화 서비스
-3. `src/app/(dashboard)/teams/page.tsx` - 팀 목록 페이지
-4. `src/app/(dashboard)/teams/[teamId]/page.tsx` - 팀 상세 + API 키 관리
-5. `src/components/charts/team-costs-bar-chart.tsx` - 팀별 비용 차트 컴포넌트
-
 **Files to Reuse:**
-- `src/lib/services/encryption/kms-envelope.ts` - Story 1.1에서 생성 (KMS Envelope Encryption)
-- `src/app/api/cron/daily-batch/route.ts` - Story 1.2에서 생성 (비용 데이터 수집)
-- `src/app/(dashboard)/page.tsx` - Story 1.8에서 생성 (홈 대시보드)
-- `prisma/schema.prisma` - Team, TeamMember, ApiKey 모델 (이미 정의됨, 필드 추가 필요)
+- `src/lib/services/encryption/kms-envelope.ts` - KMS encryption (Story 1.1)
+- `src/server/api/trpc.ts` - protectedProcedure pattern
+- `src/components/ui/*` - shadcn/ui components (Button, Input, Alert, Form)
 
 **Files to Update:**
-- `prisma/schema.prisma` - Team 모델에 owner_id, budget 필드 추가
-- `src/app/api/cron/daily-batch/route.ts` - team_id 자동 귀속 로직 추가 (AC #3)
-- `src/app/(dashboard)/page.tsx` - 팀별 비용 Top 5 차트 추가 (AC #4)
-- `src/server/api/routers/cost.ts` - getTeamCostsTopN 프로시저 추가
-- `src/server/api/root.ts` - teamRouter 추가
+- `prisma/schema.prisma` - Add OrganizationApiKey model, extend Team, Project, CostData
+- `src/server/api/root.ts` - Add teamRouter export
+- `src/app/(dashboard)/projects/[id]/settings/page.tsx` - Add Project ID section
 
-### Learnings from Previous Story
+### Migration Context
 
-**From Story 1-6-주간-리포트-생성-및-발송 (Status: done)**
+**Breaking Changes from Usage API:**
 
-- **React Email + Resend Service Available**: `src/lib/services/email/resend.ts`
-  - sendWeeklyReport 함수 구현됨
-  - Retry logic with exponential backoff
-  - Batch email sending (50 recipients per batch)
-  - Story 1.7에서는 이메일 발송 불필요 (UI 중심)
+| Aspect | Usage API (Old) | Costs API (New) |
+|--------|-----------------|-----------------|
+| API Key Level | Project-level | **Team-level (Admin)** |
+| Authentication | Project API Key | **Organization Admin API Key** |
+| Project Identification | API Key | **OpenAI Project ID** |
+| Data Granularity | Model, token-level | **Time bucket, line_item aggregation** |
+| Endpoint | `/v1/usage` | **/v1/organization/costs** |
+| Response Structure | Per-project, detailed | **Organization-wide, aggregated** |
 
-- **Report Generator Service**: `src/lib/services/reporting/report-generator.ts`
-  - generateWeeklyReport, calculateWeekChange 함수
-  - Top 3/Bottom 3 프로젝트 선정 로직 (rankProjects)
-  - Story 1.7에서도 유사한 패턴: 팀별 비용 Top 5
+**Migration Strategy:**
+- Additive-only schema changes (backward compatible)
+- Both APIs can coexist (apiVersion field differentiates)
+- Feature flag: `ENABLE_COSTS_API` for gradual rollout
+- See [BREAKING_CHANGES.md](../migration/BREAKING_CHANGES.md) for details
 
-- **Vercel Cron Job Pattern** (Stories 1.2, 1.4, 1.6):
-  - CRON_SECRET 검증: `src/app/api/cron/*/route.ts`
-  - Idempotency 체크: CronLog 테이블 unique constraint
-  - Story 1.7에서는 daily-batch 수정 (team_id 자동 귀속)
+### Learnings from Previous Stories
 
-- **Efficiency Calculator Service** (Story 1.3, 1.6):
-  - `src/lib/services/reporting/efficiency.ts` 이미 구현됨
-  - calculateEfficiency, rankProjects 함수
-  - Story 1.7에서는 팀별 비용 집계 및 순위에 재사용
+**From Story 1.5 (API 키 비활성화):**
+- Audit Logger Service: `src/lib/services/audit/audit-logger.ts`
+- Audit log pattern: userId, actionType, resourceId, metadata
+- Apply to Admin Key registration and Project ID registration
 
-- **Prisma Schema - WeeklyReport 모델** (Story 1.6):
-  - WeeklyReport 모델 추가됨 (prisma/schema.prisma:193-202)
-  - JSON 타입 사용하여 유연한 데이터 저장
-  - Story 1.7에서 Team 모델 확장 시 참조
+**From Story 1.1, 1.2 (KMS Encryption):**
+- KMS Envelope Encryption: `src/lib/services/encryption/kms-envelope.ts`
+- encryptWithEnvelope, decryptWithEnvelope 함수 재사용
+- OrganizationApiKey도 동일한 암호화 패턴 사용
 
-- **tRPC Protected Procedure Pattern** (Stories 1.3, 1.4, 1.5, 1.6):
-  - protectedProcedure: 인증된 사용자만 접근
-  - Zod input validation
-  - Story 1.7에서도 team.create, team.generateApiKey 등에 적용
+**From Story 1.6 (주간 리포트):**
+- React Email + Resend Service: 이메일 발송 패턴
+- Story 1.7에서는 이메일 불필요 (UI 중심)
 
-- **Design System - Premium Indigo Theme** (Story 1.5, 1.6):
-  - 다크 모드 전용: `src/styles/globals.css`
-  - shadcn/ui 컴포넌트 사용 (Button, Card, Modal, Form)
-  - Story 1.7 UI도 동일 디자인 시스템 적용
+**From Story 1.10 (프로젝트 멤버 관리):**
+- Permission model: Team admin vs. project member
+- Type-to-confirm dialog pattern
+- shadcn/ui components (Dialog, Form, Toast)
 
-- **KMS Envelope Encryption** (Story 1.1, 1.2, 1.5):
-  - `src/lib/services/encryption/kms-envelope.ts` 이미 구현됨
-  - encryptWithEnvelope, decryptWithEnvelope 함수
-  - Story 1.7에서 API 키 암호화에 재사용 (api-key-manager.ts가 래퍼)
+### Testing Standards
 
-- **Audit Logger Service** (Story 1.5):
-  - `src/lib/services/audit/audit-logger.ts` 구현됨
-  - Audit log 패턴: userId, actionType, resourceId, metadata
-  - Story 1.7에서 API 키 생성/비활성화 이벤트 로깅에 적용
+**Unit Tests (Vitest):**
+- API Key format validation
+- Project ID format validation
+- KMS encryption/decryption
 
-- **Dashboard UI 패턴** (Story 1.8 예정):
-  - 홈 대시보드: `src/app/(dashboard)/page.tsx`
-  - 카드 레이아웃, Recharts 차트 사용
-  - Story 1.7에서 "팀별 비용 Top 5" 차트 추가
+**Integration Tests (Vitest + MSW):**
+- tRPC procedures with mocked KMS and Costs API
+- Permission checks (owner/admin vs. member)
+- Precondition enforcement
 
-- **Key Technical Decisions from Previous Stories**:
-  - Vercel Cron Jobs: best-effort, Idempotency 필수
-  - Retry logic: exponential backoff 패턴 (외부 API 호출)
-  - Error handling: 모든 tRPC 프로시저에 try-catch 및 Sentry 로깅
-  - Prisma transactions: 중요한 데이터 변경 시 트랜잭션 사용
-  - Type-safe API: tRPC + Zod로 엔드투엔드 타입 안전성 보장
+**E2E Tests (Playwright):**
+- Full flow: Team creation → Admin Key → Project → Project ID
+- Error scenarios: No Admin Key, invalid format, duplicate Project ID
 
-[Source: stories/1-6-주간-리포트-생성-및-발송.md#Dev-Agent-Record]
-[Source: stories/1-5-긴급-api-키-비활성화-메커니즘.md#Dev-Agent-Record]
-[Source: stories/1-3-비용-가치-컨텍스트-기록-시스템.md#Dev-Agent-Record]
-[Source: stories/1-2-openai-api-비용-일일-배치-수집-시스템.md#Dev-Agent-Record]
-
-**Important Implementation Notes from Previous Story Review:**
-- Story 1.6 Review: 모든 HIGH severity 이슈가 커밋 5bb1dda에서 수정됨
-- Story 1.6 Review: 5/5 acceptance criteria fully implemented ✅
-- Story 1.6 Review: 7/7 completed tasks verified ✅
-- **No pending review items from Story 1.6** - 모든 리뷰 action items 완료
-
-### Testing Standards Summary
-
-**Unit Tests** (Vitest):
-- `api-key-manager.ts`: generateEncryptedApiKey, decryptApiKey, validateApiKey 함수
-- `team.ts` (tRPC router): 각 프로시저 모킹 테스트
-- KMS envelope encryption: 암호화/복호화 정확성 테스트
-
-**Integration Tests** (Vitest + MSW):
-- Team CRUD: 팀 생성 → API 키 생성 → 비용 조회 플로우
-- API 키 비활성화: 비활성화 후 비용 수집 차단 확인
-- 팀별 비용 귀속: daily-batch 실행 후 team_id 자동 설정 검증
-
-**E2E Tests** (Playwright):
-- 팀 관리 페이지 → 팀 생성 → API 키 생성 → 홈 화면 팀별 비용 표시
-- API 키 비활성화 플로우 (확인 모달 → 비활성화 → audit log 확인)
-- 팀별 비용 차트 클릭 → 팀 상세 페이지 이동
-
-### References
-
-- [Source: docs/epics.md#Story-1.7] - Story acceptance criteria and business requirements
-- [Source: docs/tech-spec-epic-1.md#Story-1.7] - Technical specification and acceptance criteria
-- [Source: docs/tech-spec-epic-1.md#Data-Models] - Team, TeamMember, ApiKey schema
-- [Source: docs/tech-spec-epic-1.md#APIs-and-Interfaces] - Team tRPC router specification
-- [Source: docs/tech-spec-epic-1.md#Services-and-Modules] - API Key Manager service
-- [Source: docs/architecture.md#Novel-Patterns] - Pattern 2: 아키텍처 기반 귀속
-- [Source: docs/architecture.md#Project-Structure] - Team management UI location
-- [Source: docs/architecture.md#Epic-to-Architecture-Mapping] - Story 1.7 architecture components
-- [Source: docs/PRD.md#Functional-Requirements] - FR007 (API 키 관리)
-- [Source: stories/1-6-주간-리포트-생성-및-발송.md] - React Email, Resend, Efficiency Calculator
-- [Source: stories/1-5-긴급-api-키-비활성화-메커니즘.md] - Audit Logger, API 키 비활성화 패턴
-- [Source: stories/1-2-openai-api-비용-일일-배치-수집-시스템.md] - Daily batch cron job, KMS encryption
-- [Source: stories/1-1-프로젝트-인프라-및-기본-인증-구축.md] - KMS envelope encryption setup
-
-## Dev Agent Record
-
-### Context Reference
-
-- docs/stories/1-7-팀별-api-키-생성-및-자동-귀속.context.xml
-
-### Agent Model Used
-
-Claude Sonnet 4.5 (claude-sonnet-4-5-20250929)
-
-### Debug Log References
-
-### Completion Notes List
-
-### Completion Notes List
-
-**2025-11-02 - Story 1.7 Implementation Complete**
-
-All acceptance criteria successfully implemented and tested:
-
-- ✅ AC#1: Team entity creation with name, owner, budget fields
-- ✅ AC#2: OpenAI API key generation with KMS envelope encryption
-- ✅ AC#3: Automatic cost attribution based on API keys (already implemented in cost-collector)
-- ✅ AC#4: Team costs Top 5 chart on dashboard home page
-- ✅ AC#5: Team management pages with API key CRUD operations
-
-**Key Implementation Highlights:**
-
-1. **Database Schema**: Added `ownerId` and `budget` fields to Team model
-2. **Team tRPC Router**: 7 procedures implemented (create, getAll, getById, update, generateApiKey, listApiKeys, disableApiKey)
-3. **API Key Manager**: Wrapper service around KMS encryption with format validation
-4. **Team Management UI**: Complete CRUD interface with shadcn/ui components
-5. **Dashboard Chart**: Recharts BarChart with click-to-navigate functionality
-6. **Security**: KMS envelope encryption, audit logging, team-per-key constraint enforced
-
-**Technical Decisions:**
-- Enforced 1 API key per team constraint (Novel Pattern 2)
-- Used existing KMS envelope encryption service
-- Applied design system consistency (Premium Indigo dark mode)
-- Implemented protected procedures with team access verification
-
-**Validation:**
-- ✅ TypeScript type checking passed
-- ✅ Production build successful
-- ✅ All 7 tasks completed with subtasks verified
-
-### File List
-
-**Created:**
-- src/server/api/routers/team.ts (Team tRPC router, 7 procedures)
-- src/lib/services/encryption/api-key-manager.ts (API key encryption wrapper)
-- src/app/(dashboard)/teams/page.tsx (Team list page)
-- src/app/(dashboard)/teams/[teamId]/page.tsx (Team detail page with API key management)
-- prisma/migrations/20251102015706_add_team_owner_and_budget/migration.sql
-
-**Modified:**
-- prisma/schema.prisma (Team model: added ownerId, budget fields)
-- src/server/api/root.ts (added teamRouter)
-- src/server/api/routers/cost.ts (added getTeamCostsTopN procedure)
-- src/app/(dashboard)/dashboard/page.tsx (added team costs Top 5 chart)
+**Validation Scripts:**
+- `validate-openai-setup.ts` - Verify all teams have correct setup
+- `test-costs-api.ts` - Test actual Costs API connectivity
 
 ---
 
-## Senior Developer Review (AI)
+## References
 
-### Review Header
-
-**Reviewer:** Claude Sonnet 4.5 (Code Review Agent)
-**Review Date:** 2025-11-02
-**Review Type:** Systematic AC & Task Validation
-**Story Status:** review → done
-**Review Outcome:** ✅ **APPROVED**
-
----
-
-### Acceptance Criteria Validation
-
-**AC#1: Team 데이터 모델 확장 (팀명, 담당자, 예산)**
-- **Status:** ✅ IMPLEMENTED
-- **Evidence:**
-  - `prisma/schema.prisma:52-53` - Added `ownerId String?` and `budget Decimal?` fields to Team model
-  - `prisma/migrations/20251102015706_add_team_owner_and_budget/migration.sql` - Migration file created and applied
-  - `src/server/api/routers/team.ts:31-74` - create procedure assigns creator as team owner with transaction
-- **Assessment:** Team model successfully extended with all required fields. Migration executed cleanly with proper indexes.
-
-**AC#2: API 키 생성 및 관리 (OpenAI API 키, KMS 암호화)**
-- **Status:** ✅ IMPLEMENTED
-- **Evidence:**
-  - `src/lib/services/encryption/api-key-manager.ts:64-71` - generateEncryptedApiKey using KMS envelope encryption
-  - `src/lib/services/encryption/api-key-manager.ts:81-88` - decryptApiKey function
-  - `src/lib/services/encryption/api-key-manager.ts:30-56` - validateApiKey with OpenAI format validation (sk-proj-* or sk-*)
-  - `src/server/api/routers/team.ts:289-377` - generateApiKey procedure with 1-per-team constraint enforcement (line 317)
-  - `src/server/api/routers/team.ts:432-505` - disableApiKey procedure with audit logging
-  - `src/app/(dashboard)/teams/[teamId]/page.tsx:229-289` - API key input modal with proper UI
-- **Assessment:** Complete API key lifecycle management with industry-standard KMS encryption. Proper constraint enforcement prevents multiple API keys per team (Novel Pattern 2).
-
-**AC#3: 자동 비용 귀속 (API 키 기준 팀 식별)**
-- **Status:** ✅ IMPLEMENTED
-- **Evidence:**
-  - `src/lib/services/openai/cost-collector.ts:214` - Auto-attribution: `teamId: apiKeyRecord.teamId`
-  - Cost data automatically linked to team via API key relationship
-- **Assessment:** Novel Pattern 2 (architecture-based attribution) successfully implemented. No manual tagging required.
-
-**AC#4: 팀별 비용 Top 5 차트 (홈 화면)**
-- **Status:** ✅ IMPLEMENTED
-- **Evidence:**
-  - `src/server/api/routers/cost.ts:289-360` - getTeamCostsTopN procedure with proper aggregation
-  - `src/app/(dashboard)/dashboard/page.tsx:26-30` - tRPC query integration
-  - `src/app/(dashboard)/dashboard/page.tsx:131-222` - Complete BarChart with Recharts, click navigation to team detail
-  - `src/app/(dashboard)/dashboard/page.tsx:192-219` - Team list below chart with budget comparison
-- **Assessment:** Dashboard chart fully integrated with interactive navigation. Budget comparison provides valuable cost context.
-
-**AC#5: 팀 관리 UI (API 키 생성, 조회, 비활성화)**
-- **Status:** ✅ IMPLEMENTED
-- **Evidence:**
-  - `src/app/(dashboard)/teams/page.tsx:1-244` - Team list page with create modal
-  - `src/app/(dashboard)/teams/[teamId]/page.tsx:1-412` - Team detail with complete API key management
-  - `src/app/(dashboard)/teams/[teamId]/page.tsx:231` - "API 키 추가" button disabled when key exists
-  - `src/app/(dashboard)/teams/[teamId]/page.tsx:312-338` - Masked API key display with active/inactive badges
-  - `src/app/(dashboard)/teams/[teamId]/page.tsx:360-409` - Disable API key modal with reason input
-- **Assessment:** Complete team management interface following shadcn/ui design system. Proper state management with loading/error handling.
-
----
-
-### Task Completion Validation
-
-**Task 1: Update Prisma schema for Team model**
-- ✅ Subtask 1.1: Add ownerId field - VERIFIED (`prisma/schema.prisma:52`)
-- ✅ Subtask 1.2: Add budget field - VERIFIED (`prisma/schema.prisma:53`)
-- ✅ Subtask 1.3: Run migration - VERIFIED (migration file exists, applied successfully)
-
-**Task 2: Create Team tRPC router with 7 procedures**
-- ✅ Subtask 2.1: create procedure - VERIFIED (`src/server/api/routers/team.ts:31-74`)
-- ✅ Subtask 2.2: getAll procedure - VERIFIED (`src/server/api/routers/team.ts:81-116`)
-- ✅ Subtask 2.3: getById procedure - VERIFIED (`src/server/api/routers/team.ts:125-223`)
-- ✅ Subtask 2.4: update procedure - VERIFIED (`src/server/api/routers/team.ts:226-280`)
-- ✅ Subtask 2.5: generateApiKey procedure - VERIFIED (`src/server/api/routers/team.ts:289-377`)
-- ✅ Subtask 2.6: listApiKeys procedure - VERIFIED (`src/server/api/routers/team.ts:381-425`)
-- ✅ Subtask 2.7: disableApiKey procedure - VERIFIED (`src/server/api/routers/team.ts:432-505`)
-
-**Task 3: Create API Key Manager service**
-- ✅ Subtask 3.1: validateApiKey function - VERIFIED (`src/lib/services/encryption/api-key-manager.ts:30-56`)
-- ✅ Subtask 3.2: generateEncryptedApiKey function - VERIFIED (`src/lib/services/encryption/api-key-manager.ts:64-71`)
-- ✅ Subtask 3.3: decryptApiKey function - VERIFIED (`src/lib/services/encryption/api-key-manager.ts:81-88`)
-- ✅ Subtask 3.4: maskApiKey function - VERIFIED (`src/lib/services/encryption/api-key-manager.ts:96-99`)
-
-**Task 4: Create Team UI pages**
-- ✅ Subtask 4.1: teams/page.tsx (list) - VERIFIED (`src/app/(dashboard)/teams/page.tsx:1-244`)
-- ✅ Subtask 4.2: teams/[teamId]/page.tsx (detail) - VERIFIED (`src/app/(dashboard)/teams/[teamId]/page.tsx:1-412`)
-
-**Task 5: Verify auto cost attribution**
-- ✅ Subtask 5.1: Check cost-collector integration - VERIFIED (`src/lib/services/openai/cost-collector.ts:214`)
-
-**Task 6: Add team costs chart to dashboard**
-- ✅ Subtask 6.1: Create getTeamCostsTopN tRPC procedure - VERIFIED (`src/server/api/routers/cost.ts:289-360`)
-- ✅ Subtask 6.2: Integrate BarChart in dashboard - VERIFIED (`src/app/(dashboard)/dashboard/page.tsx:131-222`)
-
-**Task 7: Run validation checks**
-- ✅ Subtask 7.1: TypeScript type check - VERIFIED (user confirmed: 0 errors)
-- ✅ Subtask 7.2: Production build - VERIFIED (build successful)
-
-**Summary:** 31/31 subtasks verified complete with file:line evidence.
-
----
-
-### Code Quality Review
-
-**Error Handling:**
-- ✅ All tRPC procedures use proper error codes (FORBIDDEN, NOT_FOUND, BAD_REQUEST)
-- ✅ UI components have loading states (Loader2 spinners) and error toast notifications
-- ✅ Database transactions used for atomic operations (team.create:42-68)
-- ✅ Async errors properly caught (e.g., Slack notification in cost.ts:451-461)
-
-**Security:**
-- ✅ API keys encrypted with KMS AES-256-GCM envelope encryption
-- ✅ Team access verification in all protected procedures (teamMember checks)
-- ✅ Input validation with Zod schemas throughout
-- ✅ No SQL injection risk (Prisma ORM parameterized queries)
-- ✅ API key masking in UI (shows last 4 characters only)
-- ✅ Audit logging for sensitive operations (API key disable in team.ts:429-434)
-
-**Test Coverage:**
-- ⚠️ MEDIUM: No unit tests for new team router procedures
-  - Note: This is consistent with existing codebase pattern (other routers also lack tests)
-  - Recommendation: Add integration tests for critical paths in future epic (defer to Epic 1.9 cleanup)
-  - Impact: Low - TypeScript provides strong type safety, production build verified
-
-**Code Quality:**
-- ✅ Follows T3 Stack conventions (tRPC, Prisma, NextAuth)
-- ✅ Consistent with shadcn/ui design system (Premium Indigo dark mode theme)
-- ✅ Proper TypeScript typing throughout (0 type errors)
-- ✅ Clean separation of concerns (router → service → UI layers)
-- ✅ DRY principle applied (api-key-manager wraps KMS service)
-- ✅ Meaningful variable and function names
-- ✅ TypeScript compilation: 0 errors
-- ✅ Production build: Successful
-
----
-
-### Findings Summary
-
-**HIGH Severity:** 0
-**MEDIUM Severity:** 1
-- Test coverage gap for team router (acceptable given codebase pattern)
-
-**LOW Severity:** 0
-
-**Positive Observations:**
-- Excellent adherence to Novel Pattern 2 (architecture-based attribution)
-- Proper enforcement of 1-API-key-per-team constraint
-- Strong security implementation with KMS encryption
-- Consistent design system application
-- Clean code structure with good separation of concerns
-- All acceptance criteria fully satisfied with evidence
-
----
-
-### Overall Assessment
-
-This story demonstrates **exemplary implementation quality** with complete coverage of all acceptance criteria and tasks. The implementation successfully realizes Novel Pattern 2 (architecture-based attribution via API key isolation), which is a core differentiator of this FinOps system.
-
-**Key Strengths:**
-1. **Security-first approach**: KMS envelope encryption, audit logging, team access control
-2. **Architecture alignment**: Perfect adherence to tech spec and architecture decisions
-3. **User experience**: Clean UI with proper loading states, error handling, and intuitive workflows
-4. **Code quality**: TypeScript type safety, Prisma transactions, proper error handling
-5. **Completeness**: All 5 ACs implemented, all 31 subtasks verified with evidence
-
-**Single Medium Finding:**
-- Test coverage gap is noted but acceptable given this is consistent with the existing codebase pattern. Recommend addressing in Epic 1.9 integration testing story.
-
-**Recommendation:** ✅ **APPROVE** - Ready for production deployment.
-
----
-
-### Approval Decision
-
-**Decision:** ✅ APPROVE
-**Rationale:**
-- Zero HIGH severity findings
-- Single MEDIUM finding is acceptable (consistent with codebase pattern)
-- All acceptance criteria fully implemented with evidence
-- All tasks verified complete
-- TypeScript type checking: 0 errors
-- Production build: Successful
-- Security best practices followed
-- Architecture patterns correctly applied
-
-**Next Steps:**
-1. Update sprint-status.yaml: review → done
-2. Proceed to Story 1.8 (긴급-조치용-기본-웹-대시보드)
+- [Source: docs/epics-v2.md#Story-1.7] - Story acceptance criteria and implementation tasks
+- [Source: docs/migration/costs-api-migration-plan.md#Section-3.2] - tRPC router specifications
+- [Source: docs/migration/DOCUMENTATION_REWRITE_CHECKLIST.md#Section-7] - Story 1.7 rewrite requirements
+- [Source: docs/architecture.md#Novel-Patterns] - Pattern 2: Team-level Admin Key + Project ID Filtering
+- [Source: docs/tech-spec-epic-1.md#Data-Models] - OrganizationApiKey, Project.openaiProjectId schema
+- [Source: docs/PRD.md#Functional-Requirements] - FR007, FR007-B, FR007-C
+- [OpenAI Costs API Documentation](https://platform.openai.com/docs/api-reference/costs)
 
 ---
 
 ## Change Log
 
-### 2025-11-02
-- Story drafted by create-story workflow
-- Previous story learnings incorporated from Story 1.6 (done)
-- Story extracted from sprint-status.yaml (backlog → drafted)
-- **Implementation completed**: All 7 tasks, 5 acceptance criteria satisfied
-- **Status**: backlog → ready-for-dev → in-progress → review
-- **Code review completed**: APPROVED - All ACs verified, 0 HIGH findings, ready for production
+### 2025-01-04
+- Story completely rewritten for Costs API migration
+- Changed from project-level API keys to team-level Admin Keys
+- Added Project ID registration and validation
+- Updated all 8 acceptance criteria
+- Created 16 implementation tasks (Backend 8, Frontend 4, Testing 4)
+- Added complete tRPC router code examples
+- Added UI mockups and validation logic
+- Added security considerations and testing strategy
+- Status: ready-for-dev
+
+---
+
+**End of Story 1.7 Specification**

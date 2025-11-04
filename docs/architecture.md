@@ -1,9 +1,12 @@
 # Decision Architecture - finops-for-ai
 
 **Author:** Issac
-**Date:** 2025-10-31
+**Date:** 2025-01-04 (Updated for Costs API Migration)
+**Original Date:** 2025-10-31
 **Project Level:** 2
 **Target Scale:** MVP - AI Cost Management Platform
+
+> **🔄 MIGRATION NOTE:** This document has been updated to reflect the OpenAI Costs API migration. See [BREAKING_CHANGES.md](./migration/BREAKING_CHANGES.md) for details.
 
 ---
 
@@ -13,7 +16,7 @@ finops-for-ai 프로젝트는 **T3 Stack (Next.js 16 + tRPC + Prisma + NextAuth)
 
 핵심 차별화 요소는 두 가지 Novel Patterns입니다:
 1. **비용-가치 연결**: 단순 비용 추적이 아닌, 프로젝트 성과와 함께 분석하여 "비용 대비 가치" 계산
-2. **프로젝트 기반 API 키 격리**: 태그 대신 프로젝트별 API 키 격리로 비용 자동 귀속 및 팀 레벨 집계
+2. **팀 기반 Admin API 키 + 프로젝트 ID 필터링**: Team-level OpenAI Organization Admin Key로 Costs API 호출, OpenAI Project IDs로 프로젝트별 비용 필터링 및 팀 레벨 집계
 
 이 아키텍처는 15개 스토리(2개 Epic)를 2-4시간 단위로 구현 가능하도록 AI 에이전트 일관성을 보장합니다.
 
@@ -44,7 +47,7 @@ bun create t3-app@latest finops-for-ai -- --nextAuth --prisma --trpc --tailwind 
 | -------- | -------- | ------- | ------------- | --------- |
 | **Language** | TypeScript | 5.1+ | All | T3 Stack 제공, 타입 안전성 |
 | **Framework** | Next.js (App Router) | 16.x | All | T3 Stack 제공, SSR/SSG 지원 |
-| **API Pattern** | tRPC | 11.7.1 | All | T3 Stack 제공, 엔드투엔드 타입 안전 |
+| **API Pattern** | tRPC + OpenAI Costs API | 11.7.1 / v1 | All | T3 Stack 제공, 엔드투엔드 타입 안전 / Costs API provides organization-level aggregated data with project_id filtering |
 | **ORM** | Prisma | 6.16.3 | All | T3 Stack 제공, PostgreSQL 최적화 |
 | **Authentication** | NextAuth v5 (Auth.js) | 5.x | Epic 1 | T3 Stack 제공, JWT 기반 |
 | **Styling** | Tailwind CSS | 3.x | All | T3 Stack 제공, 빠른 UI 개발 |
@@ -155,12 +158,12 @@ finops-for-ai/
 | Story | 아키텍처 컴포넌트 | 기술 스택 |
 | ----- | ----------------- | --------- |
 | 1.1 | `prisma/schema.prisma`, `src/server/auth.ts`, `src/app/(auth)/` | NextAuth, Prisma, AWS KMS |
-| 1.2 | `src/lib/services/openai/cost-collector.ts`, `src/app/api/cron/daily-batch/` | Vercel Cron, OpenAI SDK, Prisma |
+| 1.2 | `src/lib/services/openai/cost-collector-v2.ts`, `src/app/api/cron/daily-batch/` | Vercel Cron, **Costs API (`/v1/organization/costs`)**, Pagination, Prisma |
 | 1.3 | `src/lib/services/openai/context-tracker.ts`, `src/server/api/routers/project.ts` | Novel Pattern 1 (비용-가치) |
 | 1.4 | `src/app/api/cron/poll-threshold/`, `src/lib/services/email/`, `src/lib/services/slack/` | Vercel Cron, Resend, Slack |
 | 1.5 | `src/server/api/routers/cost.ts`, Prisma middleware | tRPC, Prisma |
 | 1.6 | `src/app/api/cron/weekly-report/`, `src/lib/services/reporting/`, `src/lib/services/email/templates/` | Vercel Cron, Resend, React Email |
-| 1.7 | `src/lib/services/encryption/api-key-manager.ts`, `src/server/api/routers/project.ts` | Novel Pattern 2 (프로젝트 기반 귀속) |
+| 1.7 | `src/server/api/routers/team.ts` (registerAdminApiKey), `src/server/api/routers/project.ts` (registerOpenAIProjectId), `src/lib/services/encryption/api-key-manager.ts` | Novel Pattern 2 (**팀 Admin Key + 프로젝트 ID**) |
 | 1.8 | `src/app/(dashboard)/`, `src/components/charts/`, `src/components/dashboard/` | Next.js, Recharts, Tailwind |
 | 1.9 | `__tests__/e2e/`, `__tests__/unit/`, Vercel Analytics, Sentry | Playwright, Vitest, Monitoring |
 | **1.10** | `src/server/api/routers/project.ts` (member CRUD), `src/server/api/routers/team.ts` (getMembers), `src/components/dialogs/` | **프로젝트 멤버 & API 키 관리 UI** |
@@ -240,7 +243,7 @@ finops-for-ai/
 - **Execution**: Direct import from `src/lib/services/`
 
 **4. External APIs**
-- **OpenAI**: REST API (`https://api.openai.com/v1/usage`)
+- **OpenAI**: REST API (`https://api.openai.com/v1/organization/costs`)
 - **AWS**: SDK v3 (Cost Explorer, KMS)
 - **Azure**: SDK (Cost Management API)
 - **Resend**: REST API (`https://api.resend.com/emails`)
@@ -342,29 +345,31 @@ OpenAI API 호출 (with context)
 
 ---
 
-### Pattern 2: 프로젝트 기반 API 키 격리 (Project-Based API Key Isolation)
+### Pattern 2: 팀 기반 Admin API 키 + 프로젝트 ID 필터링 (Team-Based Cost Attribution with Costs API)
 
-**목적**: 태그 대신 프로젝트별 API 키 격리로 비용 자동 귀속 및 팀 레벨 집계
+**목적**: Organization-level cost visibility with project-level filtering via OpenAI Project IDs
 
 **핵심 설계:**
-- **프로젝트가 API 키 소유**: 각 프로젝트가 독립적으로 API 키 관리
-- **프로젝트 멤버십**: 명시적 접근 제어 (ProjectMember 모델)
-- **팀 레벨 긴급 제어**: 팀 관리자는 모든 프로젝트 API 키 비활성화 가능
-- **비용 집계**: 프로젝트 → 팀 자동 집계
+- **팀이 Admin API 키 소유**: 각 팀이 하나의 OpenAI Organization Admin API Key 관리
+- **프로젝트 ID 등록**: 각 프로젝트가 OpenAI Project ID (`proj_xxx`) 등록
+- **Costs API 필터링**: Admin Key + `project_ids[]` 파라미터로 organization 전체 비용 조회 후 프로젝트별 필터링
+- **비용 집계**: OpenAI Project ID → Internal Project ID 매핑 → 팀 레벨 자동 집계
 
 **컴포넌트:**
 
-1. **API Key Manager** (`src/lib/services/encryption/api-key-manager.ts`)
+1. **OrganizationApiKey Manager** (`src/lib/services/encryption/api-key-manager.ts`)
    ```typescript
    import { KMSClient, GenerateDataKeyCommand, DecryptCommand } from '@aws-sdk/client-kms';
    import crypto from 'crypto';
 
-   class ApiKeyManager {
+   class OrganizationApiKeyManager {
      private kms: KMSClient;
 
-     async encryptApiKey(plainKey: string, projectId: string): Promise<{
+     async encryptAdminApiKey(plainKey: string, teamId: string): Promise<{
        encryptedKey: string;
        encryptedDataKey: string;
+       iv: string;
+       last4: string;
      }> {
        // 1. KMS에서 Data Key 생성
        const { Plaintext: dataKey, CiphertextBlob: encryptedDataKey } =
@@ -373,122 +378,283 @@ OpenAI API 호출 (with context)
            KeySpec: 'AES_256',
          }));
 
-       // 2. Data Key로 API 키 암호화 (AES-256-GCM)
+       // 2. Data Key로 Admin API 키 암호화 (AES-256-GCM)
+       const iv = crypto.randomBytes(16);
        const cipher = crypto.createCipheriv('aes-256-gcm', dataKey, iv);
        const encryptedKey = cipher.update(plainKey, 'utf8', 'hex') + cipher.final('hex');
+       const authTag = cipher.getAuthTag().toString('hex');
 
-       // 3. DB 저장 (프로젝트에 귀속)
-       await prisma.apiKey.create({
-         data: {
-           projectId,
-           encryptedKey,
+       // 3. DB 저장 (팀에 귀속)
+       await prisma.organizationApiKey.upsert({
+         where: { teamId },
+         update: {
+           encryptedKey: encryptedKey + authTag,
            encryptedDataKey: encryptedDataKey.toString('base64'),
            iv: iv.toString('hex'),
+           last4: plainKey.slice(-4),
+           isActive: true,
+         },
+         create: {
+           teamId,
+           provider: 'openai',
+           encryptedKey: encryptedKey + authTag,
+           encryptedDataKey: encryptedDataKey.toString('base64'),
+           iv: iv.toString('hex'),
+           last4: plainKey.slice(-4),
+           keyType: 'admin',
          },
        });
 
-       return { encryptedKey, encryptedDataKey: encryptedDataKey.toString('base64') };
+       return {
+         encryptedKey: encryptedKey + authTag,
+         encryptedDataKey: encryptedDataKey.toString('base64'),
+         iv: iv.toString('hex'),
+         last4: plainKey.slice(-4)
+       };
      }
 
-     async decryptApiKey(apiKeyId: string): Promise<string> {
-       const record = await prisma.apiKey.findUnique({ where: { id: apiKeyId } });
+     async decryptAdminApiKey(teamId: string): Promise<string> {
+       const record = await prisma.organizationApiKey.findUnique({
+         where: { teamId },
+       });
+
+       if (!record) {
+         throw new Error(`No admin API key found for team ${teamId}`);
+       }
 
        // 1. KMS에 암호화된 Data Key 전송 → 평문 Data Key 획득
        const { Plaintext: dataKey } = await this.kms.send(new DecryptCommand({
          CiphertextBlob: Buffer.from(record.encryptedDataKey, 'base64'),
        }));
 
-       // 2. Data Key로 API 키 복호화
+       // 2. Extract auth tag
+       const authTag = Buffer.from(record.encryptedKey.slice(-32), 'hex');
+       const encryptedText = record.encryptedKey.slice(0, -32);
+
+       // 3. Data Key로 API 키 복호화
        const decipher = crypto.createDecipheriv('aes-256-gcm', dataKey, Buffer.from(record.iv, 'hex'));
-       return decipher.update(record.encryptedKey, 'hex', 'utf8') + decipher.final('utf8');
+       decipher.setAuthTag(authTag);
+       return decipher.update(encryptedText, 'hex', 'utf8') + decipher.final('utf8');
      }
    }
    ```
 
-2. **Project Access Control** (`src/server/api/routers/project.ts`)
+2. **Project ID Registry** (`src/server/api/routers/project.ts`)
    ```typescript
-   // 프로젝트 멤버 또는 팀 관리자 확인
-   async function ensureProjectAccess(userId: string, projectId: string) {
-     const project = await prisma.project.findUnique({
-       where: { id: projectId },
-       include: {
-         members: { where: { userId } },
-         team: { include: { members: { where: { userId } } } }
-       }
-     });
-
-     const isProjectMember = project.members.length > 0;
-     const isTeamAdmin = project.team.members.some(m =>
-       m.userId === userId && (m.role === 'admin' || m.role === 'owner')
-     );
-
-     return { isProjectMember, isTeamAdmin, project };
-   }
-
-   // API 키 생성 (프로젝트 멤버만)
-   generateApiKey: protectedProcedure
-     .input(z.object({ projectId: z.string(), provider: z.string(), apiKey: z.string() }))
+   registerOpenAIProjectId: protectedProcedure
+     .input(z.object({
+       projectId: z.string(),
+       openaiProjectId: z.string().regex(/^proj_[a-zA-Z0-9_-]+$/),
+     }))
      .mutation(async ({ input, ctx }) => {
-       const { isProjectMember } = await ensureProjectAccess(ctx.session.user.id, input.projectId);
-       if (!isProjectMember) throw new TRPCError({ code: 'FORBIDDEN' });
+       const userId = ctx.session.user.id;
 
-       return await apiKeyManager.encryptApiKey(input.apiKey, input.projectId);
-     }),
-
-   // API 키 비활성화 (프로젝트 멤버 또는 팀 관리자)
-   disableApiKey: protectedProcedure
-     .input(z.object({ apiKeyId: z.string() }))
-     .mutation(async ({ input, ctx }) => {
-       const apiKey = await prisma.apiKey.findUnique({
-         where: { id: input.apiKeyId },
-         include: { project: true }
+       // 1. 프로젝트 멤버십 확인
+       const project = await ctx.db.project.findUnique({
+         where: { id: input.projectId },
+         include: {
+           team: {
+             include: {
+               organizationApiKey: true,
+               members: { where: { userId } },
+             },
+           },
+           members: { where: { userId } },
+         },
        });
 
-       const { isProjectMember, isTeamAdmin } = await ensureProjectAccess(
-         ctx.session.user.id, apiKey.projectId
-       );
-
-       if (!isProjectMember && !isTeamAdmin) {
+       if (!project || (!project.members.length && !project.team.members.length)) {
          throw new TRPCError({ code: 'FORBIDDEN' });
        }
 
-       return await prisma.apiKey.update({
-         where: { id: input.apiKeyId },
-         data: { isActive: false }
+       // 2. Team에 Admin API Key 확인
+       if (!project.team.organizationApiKey?.isActive) {
+         throw new TRPCError({
+           code: 'PRECONDITION_FAILED',
+           message: 'Team must have an active Admin API Key before registering Project IDs',
+         });
+       }
+
+       // 3. OpenAI Project ID 중복 확인
+       const existing = await ctx.db.project.findUnique({
+         where: { openaiProjectId: input.openaiProjectId },
+       });
+
+       if (existing && existing.id !== input.projectId) {
+         throw new TRPCError({
+           code: 'CONFLICT',
+           message: 'This OpenAI Project ID is already registered',
+         });
+       }
+
+       // 4. Project 업데이트
+       return await ctx.db.project.update({
+         where: { id: input.projectId },
+         data: { openaiProjectId: input.openaiProjectId },
        });
      }),
    ```
 
-3. **Cost Attribution Engine** (`src/lib/services/openai/cost-collector.ts`)
+3. **Costs API Client** (`src/lib/services/openai/cost-collector-v2.ts`)
    ```typescript
-   async function collectDailyCosts(): Promise<void> {
-     // 1. 모든 활성 API 키 가져오기 (프로젝트별)
-     const apiKeys = await prisma.apiKey.findMany({
-       where: { isActive: true },
-       include: { project: true }
+   import pino from "pino";
+
+   const logger = pino({ name: "openai-cost-collector-v2" });
+
+   interface CostBucket {
+     object: "bucket";
+     start_time: number;
+     end_time: number;
+     results: {
+       object: "organization.costs.result";
+       amount: { value: number; currency: string };
+       line_item: string | null;
+       project_id: string | null;
+     }[];
+   }
+
+   interface CostsAPIResponse {
+     object: "page";
+     data: CostBucket[];
+     has_more: boolean;
+     next_page: string | null;
+   }
+
+   async function fetchOpenAICosts(
+     adminApiKey: string,
+     startTime: number,
+     endTime?: number,
+     projectIds?: string[],
+     limit: number = 7,
+     page?: string,
+   ): Promise<CostsAPIResponse> {
+     const url = new URL("https://api.openai.com/v1/organization/costs");
+
+     url.searchParams.set("start_time", startTime.toString());
+     url.searchParams.set("bucket_width", "1d");
+     url.searchParams.set("limit", limit.toString());
+     url.searchParams.set("group_by", "line_item,project_id");
+
+     if (endTime) url.searchParams.set("end_time", endTime.toString());
+     if (page) url.searchParams.set("page", page);
+
+     if (projectIds && projectIds.length > 0) {
+       projectIds.forEach(id => url.searchParams.append("project_ids", id));
+     }
+
+     const response = await fetch(url.toString(), {
+       method: "GET",
+       headers: {
+         Authorization: `Bearer ${adminApiKey}`,
+         "Content-Type": "application/json",
+       },
      });
 
-     for (const apiKeyRecord of apiKeys) {
-       // 2. API 키 복호화
-       const plainApiKey = await apiKeyManager.decryptApiKey(apiKeyRecord.id);
-
-       // 3. OpenAI API에서 사용 내역 수집
-       const usage = await fetchOpenAIUsage(plainApiKey, yesterday);
-
-       // 4. project_id로 자동 귀속 (태그 불필요)
-       await prisma.costData.createMany({
-         data: usage.map(u => ({
-           projectId: apiKeyRecord.projectId,  // 프로젝트에 귀속
-           apiKeyId: apiKeyRecord.id,
-           provider: 'openai',
-           service: 'gpt',
-           model: u.model,
-           tokens: u.tokens,
-           cost: u.cost,
-           date: yesterday,
-         })),
-       });
+     if (!response.ok) {
+       throw new Error(`Costs API error: ${response.status}`);
      }
+
+     return await response.json() as CostsAPIResponse;
+   }
+
+   export async function collectDailyCostsV2(
+     teamId: string,
+     targetDate?: Date,
+   ): Promise<CollectedCostDataV2[]> {
+     const date = targetDate ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
+     const startOfDay = new Date(date);
+     startOfDay.setHours(0, 0, 0, 0);
+     const endOfDay = new Date(date);
+     endOfDay.setHours(23, 59, 59, 999);
+
+     const startTime = Math.floor(startOfDay.getTime() / 1000);
+     const endTime = Math.floor(endOfDay.getTime() / 1000);
+
+     // 1. Team의 Admin API Key 조회 및 복호화
+     const orgApiKey = await db.organizationApiKey.findUnique({
+       where: { teamId, provider: "openai", isActive: true },
+     });
+
+     if (!orgApiKey) {
+       logger.warn({ teamId }, "No active Admin API key");
+       return [];
+     }
+
+     const decryptedKey = await apiKeyManager.decryptAdminApiKey(teamId);
+
+     // 2. Team의 모든 프로젝트 조회 (OpenAI Project ID가 있는 것만)
+     const projects = await db.project.findMany({
+       where: { teamId, openaiProjectId: { not: null } },
+       select: { id: true, openaiProjectId: true },
+     });
+
+     if (projects.length === 0) {
+       logger.warn({ teamId }, "No projects with OpenAI Project ID");
+       return [];
+     }
+
+     const projectIdMap = new Map(
+       projects.map(p => [p.openaiProjectId!, p.id])
+     );
+     const openaiProjectIds = Array.from(projectIdMap.keys());
+
+     // 3. Costs API 호출 (pagination)
+     let allBuckets: CostBucket[] = [];
+     let currentPage: string | undefined;
+     let hasMore = true;
+
+     while (hasMore) {
+       const response = await fetchOpenAICosts(
+         decryptedKey,
+         startTime,
+         endTime,
+         openaiProjectIds,
+         180,
+         currentPage
+       );
+
+       allBuckets.push(...response.data);
+
+       if (response.has_more && response.next_page) {
+         currentPage = response.next_page;
+       } else {
+         hasMore = false;
+       }
+     }
+
+     // 4. 데이터 변환
+     const allCostData: CollectedCostDataV2[] = [];
+
+     for (const bucket of allBuckets) {
+       const bucketStartTime = new Date(bucket.start_time * 1000);
+       const bucketEndTime = new Date(bucket.end_time * 1000);
+
+       for (const result of bucket.results) {
+         const internalProjectId = result.project_id
+           ? projectIdMap.get(result.project_id)
+           : null;
+
+         if (!internalProjectId) {
+           logger.warn({ openaiProjectId: result.project_id }, "Unknown project ID");
+           continue;
+         }
+
+         allCostData.push({
+           projectId: internalProjectId,
+           provider: "openai",
+           service: result.line_item ?? "Unknown",
+           cost: result.amount.value,
+           bucketStartTime,
+           bucketEndTime,
+           lineItem: result.line_item,
+           currency: result.amount.currency,
+           apiVersion: "costs_v1",
+         });
+       }
+     }
+
+     logger.info({ teamId, recordCount: allCostData.length }, "Costs API collection completed");
+     return allCostData;
    }
    ```
 
@@ -497,19 +663,22 @@ OpenAI API 호출 (with context)
    // 팀별 비용은 프로젝트 비용을 집계
    getCostByTeam: protectedProcedure
      .input(z.object({ teamId: z.string() }))
-     .query(async ({ input }) => {
+     .query(async ({ input, ctx }) => {
        // 팀의 모든 프로젝트 가져오기
-       const projects = await prisma.project.findMany({
+       const projects = await ctx.db.project.findMany({
          where: { teamId: input.teamId },
          select: { id: true }
        });
 
        const projectIds = projects.map(p => p.id);
 
-       // 프로젝트별 비용 집계
-       const costs = await prisma.costData.groupBy({
+       // 프로젝트별 비용 집계 (Costs API 데이터만)
+       const costs = await ctx.db.costData.groupBy({
          by: ['date'],
-         where: { projectId: { in: projectIds } },
+         where: {
+           projectId: { in: projectIds },
+           apiVersion: 'costs_v1', // Costs API 데이터만
+         },
          _sum: { cost: true }
        });
 
@@ -517,149 +686,30 @@ OpenAI API 호출 (with context)
      }),
    ```
 
-5. **Isolation Advisor** (`src/app/(dashboard)/architecture/page.tsx`)
-   - OpenAI: "프로젝트별 API 키 분리" 권고 (이미 구현됨)
-   - AWS: "프로젝트별 AWS 계정 또는 IAM Role 분리" 권고
-   - Azure: "프로젝트별 리소스 그룹 격리" 권고
-   - 교육 콘텐츠: "왜 태그보다 격리가 좋은가?"
-
 **데이터 흐름:**
 ```
-프로젝트 생성
-  → 생성자가 첫 번째 프로젝트 멤버로 자동 추가
-  → 프로젝트 멤버가 OpenAI API 키 등록
-  → AWS KMS로 암호화 후 저장 (project_id 연결)
-  → 프로젝트가 해당 키 사용
+팀 생성
+  → Team Admin이 OpenAI Organization Admin API Key 등록
+  → KMS 암호화 후 OrganizationApiKey 테이블 저장
+  → 프로젝트 생성
+  → Project Admin이 OpenAI Project ID 등록
+  → Costs API로 유효성 검증 (Admin Key + Project ID)
+  → Project.openaiProjectId 업데이트
   → 일일 배치 Cron (매일 오전 9시)
-  → Cost Collector가 API 키별 비용 수집
-  → api_key_id → project_id 매핑으로 자동 귀속
+  → Cost Collector V2가 팀의 Admin Key 복호화
+  → 팀의 모든 프로젝트 OpenAI Project IDs 조회
+  → Costs API 호출 (project_ids 필터링, pagination)
+  → openai_project_id → internal project_id 매핑
+  → cost_data 테이블 저장 (apiVersion='costs_v1')
   → 팀 레벨 보고 시 프로젝트 비용 자동 집계
-  → 태그 없이 프로젝트 및 팀별 비용 집계 완료
 ```
 
 **권한 모델:**
-- **프로젝트 멤버**: API 키 등록, 조회, 비활성화, 재활성화, 삭제 가능
-- **팀 관리자**: 모든 프로젝트 API 키 조회 및 긴급 비활성화 가능
-- **프로젝트 멤버십**: ProjectMember 모델로 명시적 관리
-  - 팀 관리자가 팀 멤버를 프로젝트에 추가/제거
-  - 프로젝트 멤버는 프로젝트 리소스(비용 데이터, API 키) 접근 가능
+- **Team Admin**: Admin API Key 등록/업데이트, 모든 프로젝트 비용 조회
+- **Project Member**: OpenAI Project ID 등록/업데이트, 자신의 프로젝트 비용 조회
+- **Team Member**: 팀 전체 비용 조회 (읽기 전용)
 
-**실제 구현 (2025-11-03):**
-
-**6. API Key Lifecycle Management** (`src/server/api/routers/project.ts`)
-```typescript
-// API 키 재활성화 (비활성화된 키 복구)
-enableApiKey: protectedProcedure
-  .input(z.object({ apiKeyId: z.string(), reason: z.string().optional() }))
-  .mutation(async ({ ctx, input }) => {
-    await ensureProjectAccess(userId, apiKey.project.id);
-
-    const updated = await db.apiKey.update({
-      where: { id: input.apiKeyId },
-      data: { isActive: true },
-    });
-
-    // Audit log
-    await db.auditLog.create({
-      data: {
-        userId,
-        actionType: "api_key_enabled",
-        resourceType: "api_key",
-        resourceId: input.apiKeyId,
-        metadata: { reason: input.reason || "Re-enabled API key" },
-      },
-    });
-
-    return updated;
-  }),
-
-// API 키 영구 삭제
-deleteApiKey: protectedProcedure
-  .input(z.object({ apiKeyId: z.string(), reason: z.string().min(1) }))
-  .mutation(async ({ ctx, input }) => {
-    await ensureProjectAccess(userId, apiKey.project.id);
-
-    // Audit log (삭제 전에 기록)
-    await db.auditLog.create({ ... });
-
-    // Hard delete (CostData.apiKeyId는 nullable이므로 안전)
-    await db.apiKey.delete({ where: { id: input.apiKeyId } });
-
-    return { success: true };
-  }),
-```
-
-**7. Project Member Management** (`src/server/api/routers/project.ts`, `src/server/api/routers/team.ts`)
-```typescript
-// 팀 멤버 목록 조회 (드롭다운용)
-team.getMembers: protectedProcedure
-  .input(z.object({ teamId: z.string() }))
-  .query(async ({ ctx, input }) => {
-    // 권한 확인
-    const membership = await db.teamMember.findUnique({ ... });
-    if (!membership) throw new TRPCError({ code: "FORBIDDEN" });
-
-    // 팀의 모든 멤버 반환
-    return await db.teamMember.findMany({
-      where: { teamId: input.teamId },
-      include: { user: { select: { id: true, name: true, email: true } } },
-      orderBy: [{ role: "asc" }, { createdAt: "asc" }],
-    });
-  }),
-
-// 프로젝트 멤버 추가 (Team admin only) - 기존 구현 유지
-project.addMember: protectedProcedure
-  .mutation(async ({ input, ctx }) => {
-    await ensureTeamAdmin(userId, input.projectId);
-    // ...
-  }),
-
-// 프로젝트 멤버 제거 (Team admin only) - 기존 구현 유지
-project.removeMember: protectedProcedure
-  .mutation(async ({ input, ctx }) => {
-    await ensureTeamAdmin(userId, input.projectId);
-    // ...
-  }),
-```
-
-**8. Management UI Components** (`src/components/dialogs/`)
-```typescript
-// AddMemberDialog: 팀 멤버 드롭다운에서 선택하여 프로젝트에 추가
-// - 이미 추가된 멤버는 비활성화
-// - 멤버 이름, 이메일, 역할 표시
-
-// AddApiKeyDialog: API 키 추가
-// - Provider 선택 (현재 OpenAI만)
-// - API 키 입력 (password type, 마스킹)
-// - 클라이언트 측 형식 검증 (sk- prefix)
-// - 보안 경고 표시
-
-// ConfirmDisableKeyDialog: API 키 비활성화 확인 (기존)
-// - Type-to-confirm: "차단" 입력 필요
-// - 비활성화 사유 입력 (textarea)
-
-// ConfirmDeleteKeyDialog: API 키 영구 삭제 확인 (신규)
-// - Type-to-confirm: "삭제" 입력 필요
-// - 삭제 사유 입력 (textarea)
-// - 영구 삭제 경고 메시지
-```
-
-**9. Project Detail Page Integration** (`src/app/(dashboard)/projects/[id]/page.tsx`)
-- **섹션 순서**: Stats → Members → API Keys → Charts → Metrics
-- **Project Members Section**:
-  - 멤버 목록 (이름, 이메일, 가입일)
-  - "멤버 추가" 버튼 (Team admin만 표시)
-  - 멤버 제거 버튼 (confirm 다이얼로그)
-  - 빈 상태 처리
-- **API Keys Management Section**:
-  - API 키 목록 (provider, status badge, last4, 생성일)
-  - 활성 키: "비활성화" + "삭제" 버튼
-  - 비활성 키: "재활성화" + "삭제" 버튼
-  - "API 키 추가" 버튼
-  - 보안 주의사항 표시
-  - 기존 "긴급 API 키 관리" 섹션 통합
-
-**영향받는 Epic:** Epic 1 (Story 1.7, 1.10), Epic 2 (Story 2.1, 2.3)
+**영향받는 Epic:** Epic 1 (Story 1.2, 1.7), Epic 2 (Story 2.3)
 
 ---
 
@@ -678,12 +728,12 @@ project.removeMember: protectedProcedure
 
 #### Database (Prisma)
 - **테이블**: 복수형 소문자
-  - ✅ `users`, `projects`, `api_keys`, `cost_data`
-  - ❌ `Users`, `Project`, `apiKeys`
+  - ✅ `users`, `projects`, `organization_api_keys`, `cost_data`
+  - ❌ `Users`, `Project`, `organizationApiKeys`
 
 - **컬럼**: `snake_case`
-  - ✅ `user_id`, `created_at`, `api_key_encrypted`
-  - ❌ `userId`, `createdAt`, `apiKeyEncrypted`
+  - ✅ `user_id`, `created_at`, `openai_project_id`
+  - ❌ `userId`, `createdAt`, `openaiProjectId`
 
 - **외래 키**: `{table}_id`
   - ✅ `team_id`, `project_id`
@@ -723,9 +773,9 @@ project.removeMember: protectedProcedure
 #### 테스트 위치
 ```
 src/lib/services/openai/
-  ├── cost-collector.ts
+  ├── cost-collector-v2.ts
   └── __tests__/
-      └── cost-collector.test.ts
+      └── cost-collector-v2.test.ts
 ```
 
 #### 컴포넌트 구조
@@ -876,13 +926,13 @@ return <ProjectList projects={data} />;
 ```typescript
 // Retry: 일시적 에러만 (네트워크, 5xx)
 const result = await retry(
-  () => fetchOpenAIUsage(apiKey, date),
+  () => fetchOpenAICosts(adminApiKey, startTime, endTime, projectIds),
   {
     retries: 3,
     minTimeout: 1000,
     maxTimeout: 5000,
     onRetry: (err, attempt) => {
-      logger.warn({ err, attempt }, 'Retrying OpenAI API call');
+      logger.warn({ err, attempt }, 'Retrying Costs API call');
     },
   }
 );
@@ -916,15 +966,25 @@ export async function GET(request: Request) {
     return Response.json({ message: 'Already executed today' });
   }
 
-  // 3. 실행
-  await collectDailyCosts();
+  // 3. 실행 (Costs API v2)
+  const allCostData = [];
+  const activeTeams = await db.team.findMany({
+    where: { organizationApiKey: { isActive: true } },
+  });
+
+  for (const team of activeTeams) {
+    const costData = await collectDailyCostsV2(team.id);
+    allCostData.push(...costData);
+  }
+
+  const createdCount = await storeCostDataV2(allCostData);
 
   // 4. 로그 기록
   await prisma.cronLog.create({
     data: { jobName: 'daily-batch', date: today },
   });
 
-  return Response.json({ message: 'Success' });
+  return Response.json({ success: true, recordsCreated: createdCount });
 }
 ```
 
@@ -949,12 +1009,12 @@ public/
 #### Prisma Migrations
 ```bash
 # 마이그레이션 생성
-bunx prisma migrate dev --name add_cloud_credentials_table
+bunx prisma migrate dev --name add_costs_api_support
 
 # 명명: snake_case 동사
-# ✅ add_cloud_credentials_table
-# ✅ update_cost_data_indexes
-# ❌ AddCloudCredentials
+# ✅ add_organization_api_keys
+# ✅ add_openai_project_id_to_projects
+# ❌ AddCostsAPISupport
 ```
 
 ---
@@ -975,11 +1035,11 @@ bunx prisma migrate dev --name add_cloud_credentials_table
 #### Git Commit
 - **형식**: Conventional Commits
   ```
-  feat: 비용 임계값 알림 추가
+  feat: Costs API 통합 및 Admin Key 관리
   fix: KMS 암호화 버그 수정
-  chore: Prisma 스키마 업데이트
-  docs: 아키텍처 문서 업데이트
-  test: E2E 테스트 추가
+  chore: Prisma 스키마 업데이트 (Costs API)
+  docs: architecture.md Costs API 마이그레이션 반영
+  test: Costs API E2E 테스트 추가
   ```
 
 ---
@@ -1028,15 +1088,16 @@ model Session {
   @@map("sessions")
 }
 
-// 팀 (Story 1.7)
+// 팀 (Story 1.7) - Multi-Org Support
 model Team {
   id         String   @id @default(cuid())
   name       String
   created_at DateTime @default(now())
 
   // Relations
-  members    TeamMember[]
-  projects   Project[]
+  members             TeamMember[]
+  projects            Project[]
+  organizationApiKeys OrganizationApiKey[] // 🆕 1:N 관계 (team can have multiple org keys)
 
   @@map("teams")
 }
@@ -1054,7 +1115,36 @@ model TeamMember {
   @@map("team_members")
 }
 
-// API 키 (Story 1.7, 2.1 - KMS 암호화)
+// 🆕 Team-level Organization Admin API Key (Story 1.7) - Multi-Org Support
+model OrganizationApiKey {
+  id               String   @id @default(cuid())
+  teamId           String   @map("team_id")  // ✅ Removed @unique - now 1:N (team can have multiple org keys)
+  provider         String   // 'openai', 'anthropic', 'aws', 'azure'
+  organizationId   String?  @map("organization_id") // OpenAI: org_xxx, Anthropic: workspace_xxx
+
+  // KMS Envelope Encryption
+  encryptedKey     String   @map("encrypted_key") @db.Text
+  encryptedDataKey String   @map("encrypted_data_key") @db.Text
+  iv               String   // Initialization vector
+
+  // 보안 및 메타데이터
+  last4            String   @db.VarChar(4) // 마지막 4자리 (UI 표시용)
+  isActive         Boolean  @default(true) @map("is_active")
+  keyType          String   @default("admin") @map("key_type") // 'admin' | 'service_account'
+  displayName      String?  @map("display_name") // User-friendly name for UI
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, provider, organizationId], name: "unique_team_provider_org")
+  @@index([teamId])
+  @@index([provider, isActive])
+  @@map("organization_api_keys")
+}
+
+// 🆕 Deprecated: Project-level API Keys (Usage API 전용, 마이그레이션 후 제거 검토)
 model ApiKey {
   id                 String   @id @default(cuid())
   project_id         String
@@ -1072,21 +1162,31 @@ model ApiKey {
   @@map("api_keys")
 }
 
-// 프로젝트 (Story 1.3)
+// 프로젝트 (Story 1.3, 1.7) - Multi-Provider Support
 model Project {
   id          String   @id @default(cuid())
   name        String
   description String?
   team_id     String
+
+  // 🆕 AI Provider Integration (Multi-Provider Support)
+  aiProvider       String?  @map("ai_provider")        // 'openai', 'anthropic', 'aws', 'azure'
+  aiOrganizationId String?  @map("ai_organization_id") // org_xxx, workspace_xxx, account_id, subscription_id
+  aiProjectId      String?  @map("ai_project_id")      // proj_xxx, project_xxx, application_id
+
   created_at  DateTime @default(now())
 
   // Relations
   team      Team             @relation(fields: [team_id], references: [id])
   members   ProjectMember[]
-  api_keys  ApiKey[]
+  api_keys  ApiKey[]        // ⚠️ Deprecated: Usage API용
   cost_data CostData[]
   metrics   ProjectMetrics?
 
+  @@unique([aiProvider, aiOrganizationId, aiProjectId], name: "unique_provider_org_project")
+  @@index([team_id])
+  @@index([aiProvider, aiOrganizationId])
+  @@index([aiProjectId])
   @@map("projects")
 }
 
@@ -1117,18 +1217,34 @@ model ProjectMetrics {
   @@map("project_metrics")
 }
 
-// 비용 데이터 (Story 1.2, 2.2)
+// 비용 데이터 (Story 1.2, 2.2) - Costs API 지원
 model CostData {
   id          String   @id @default(cuid())
   project_id  String
-  api_key_id  String
+
+  // ⚠️ Deprecated: Usage API 전용 필드 (nullable)
+  api_key_id  String?  @map("api_key_id")
+  snapshot_id String?  @map("snapshot_id")
+  tokens      Int?
+  model       String?
+
+  // 공통 필드
   provider    String   // "openai" | "aws" | "azure"
-  service     String   // "gpt-4" | "SageMaker" | "Azure OpenAI"
-  model       String?  // OpenAI 모델명
-  tokens      Int?     // OpenAI only
+  service     String   // Usage API: 'gpt-4', Costs API: line_item
   cost        Decimal  @db.Decimal(10,2)
-  date        DateTime @db.Date
-  snapshot_id String?  // OpenAI snapshot ID
+  date        DateTime @db.Date // Usage API: 단일 날짜, Costs API: bucketStartTime에서 변환
+
+  // 🆕 Costs API 전용 필드
+  bucketStartTime DateTime? @map("bucket_start_time") // Unix timestamp → DateTime
+  bucketEndTime   DateTime? @map("bucket_end_time")
+  lineItem        String?   @map("line_item") // e.g., "Image models", "GPT-4"
+  currency        String?   @default("usd")
+
+  // API 버전 트래킹 (데이터 출처 구분)
+  apiVersion String @default("usage_v1") @map("api_version") // 'usage_v1' | 'costs_v1'
+
+  // 🆕 Multi-Provider Metadata
+  providerMetadata Json? @map("provider_metadata") // Provider-specific data: { organizationId, aiProjectId, etc. }
 
   // Novel Pattern 1: Context
   task_type   String?  // "chat" | "embedding" | "fine-tuning"
@@ -1137,9 +1253,13 @@ model CostData {
   created_at  DateTime @default(now())
 
   project Project @relation(fields: [project_id], references: [id], onDelete: Restrict)
-  api_key ApiKey  @relation(fields: [api_key_id], references: [id])
+  api_key ApiKey? @relation(fields: [api_key_id], references: [id])
 
+  // 중복 제거 전략 변경
+  @@unique([projectId, bucketStartTime, bucketEndTime, lineItem, apiVersion], name: "unique_cost_bucket")
+  @@unique([apiKeyId, date, snapshotId], name: "unique_usage_snapshot") // 기존 Usage API용
   @@index([project_id, date])
+  @@index([apiVersion]) // 🆕 API 버전별 쿼리용
   @@map("cost_data")
 }
 
@@ -1229,7 +1349,133 @@ export const appRouter = createTRPCRouter({
 export type AppRouter = typeof appRouter;
 ```
 
-### Example Router: Project
+### Team Router (🆕 Costs API Support)
+
+```typescript
+// src/server/api/routers/team.ts
+import { z } from "zod";
+import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+import { TRPCError } from "@trpc/server";
+import { getKMSEncryption } from "~/lib/services/encryption/kms-envelope";
+
+export const teamRouter = createTRPCRouter({
+  /**
+   * Register OpenAI Admin API Key for a team
+   */
+  registerAdminApiKey: protectedProcedure
+    .input(
+      z.object({
+        teamId: z.string(),
+        apiKey: z.string().min(20),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      // 1. 팀 멤버십 확인 (owner/admin만 가능)
+      const teamMember = await ctx.db.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId: input.teamId,
+            userId,
+          },
+        },
+      });
+
+      if (!teamMember || !["owner", "admin"].includes(teamMember.role)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only team owners/admins can register Admin API keys",
+        });
+      }
+
+      // 2. API 키 검증
+      if (!input.apiKey.startsWith("sk-")) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Invalid OpenAI Admin API key format",
+        });
+      }
+
+      // 3. KMS 암호화
+      const kms = getKMSEncryption();
+      const { ciphertext, encryptedDataKey, iv } = await kms.encrypt(input.apiKey);
+
+      // 4. 기존 Admin Key가 있으면 업데이트, 없으면 생성
+      const last4 = input.apiKey.slice(-4);
+
+      const adminKey = await ctx.db.organizationApiKey.upsert({
+        where: { teamId: input.teamId },
+        update: {
+          encryptedKey: ciphertext,
+          encryptedDataKey,
+          iv,
+          last4,
+          isActive: true,
+          updatedAt: new Date(),
+        },
+        create: {
+          teamId: input.teamId,
+          provider: "openai",
+          encryptedKey: ciphertext,
+          encryptedDataKey,
+          iv,
+          last4,
+          isActive: true,
+          keyType: "admin",
+        },
+      });
+
+      return {
+        success: true,
+        keyId: adminKey.id,
+        last4: adminKey.last4,
+      };
+    }),
+
+  /**
+   * Get Admin API Key status for a team
+   */
+  getAdminApiKeyStatus: protectedProcedure
+    .input(z.object({ teamId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      // 팀 멤버십 확인
+      const teamMember = await ctx.db.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId: input.teamId,
+            userId,
+          },
+        },
+      });
+
+      if (!teamMember) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You are not a member of this team",
+        });
+      }
+
+      const adminKey = await ctx.db.organizationApiKey.findUnique({
+        where: { teamId: input.teamId },
+        select: {
+          id: true,
+          last4: true,
+          isActive: true,
+          keyType: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      return adminKey;
+    }),
+});
+```
+
+### Project Router (🆕 OpenAI Project ID Registration)
 
 ```typescript
 // src/server/api/routers/project.ts
@@ -1237,6 +1483,95 @@ import { z } from 'zod';
 import { createTRPCRouter, protectedProcedure } from '../trpc';
 
 export const projectRouter = createTRPCRouter({
+  // ... 기존 프로시저 유지 ...
+
+  /**
+   * Register OpenAI Project ID for a project
+   */
+  registerOpenAIProjectId: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        openaiProjectId: z.string().regex(/^proj_[a-zA-Z0-9_-]+$/),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      // 1. 프로젝트 멤버십 확인
+      const project = await ctx.db.project.findUnique({
+        where: { id: input.projectId },
+        include: {
+          members: { where: { userId } },
+          team: {
+            include: {
+              organizationApiKey: true,
+              members: { where: { userId } },
+            },
+          },
+        },
+      });
+
+      if (!project || (!project.members.length && !project.team.members.length)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You are not a member of this project",
+        });
+      }
+
+      // 2. 팀에 Admin API Key가 등록되어 있는지 확인
+      if (!project.team.organizationApiKey?.isActive) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Team must have an active Admin API Key before registering Project IDs",
+        });
+      }
+
+      // 3. OpenAI Project ID 중복 확인
+      const existing = await ctx.db.project.findUnique({
+        where: { openaiProjectId: input.openaiProjectId },
+      });
+
+      if (existing && existing.id !== input.projectId) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "This OpenAI Project ID is already registered to another project",
+        });
+      }
+
+      // 4. Project 업데이트
+      const updated = await ctx.db.project.update({
+        where: { id: input.projectId },
+        data: {
+          openaiProjectId: input.openaiProjectId,
+        },
+      });
+
+      return {
+        success: true,
+        projectId: updated.id,
+        openaiProjectId: updated.openaiProjectId,
+      };
+    }),
+
+  /**
+   * Validate OpenAI Project ID belongs to the team's organization
+   */
+  validateOpenAIProjectId: protectedProcedure
+    .input(
+      z.object({
+        teamId: z.string(),
+        openaiProjectId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // TODO: Costs API 테스트 호출로 검증
+      // 실제 구현 시 Admin Key로 해당 Project ID 조회 가능 여부 확인
+      return { valid: true };
+    }),
+
+  // ... 기존 프로시저 계속 ...
+
   // 모든 프로젝트 조회
   getAll: protectedProcedure.query(async ({ ctx }) => {
     return await ctx.db.project.findMany({
@@ -1364,7 +1699,7 @@ export const authOptions: NextAuthConfig = {
 **Envelope Encryption Pattern**
 - **Algorithm**: AES-256-GCM
 - **Key Management**: AWS KMS Customer Managed Key (CMK)
-- **Encrypted Data**: API 자격증명, 클라우드 credentials
+- **Encrypted Data**: Admin API 자격증명, 클라우드 credentials
 
 ```typescript
 // src/lib/services/encryption/kms-envelope.ts
@@ -1476,6 +1811,8 @@ if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
 ```prisma
 @@index([team_id, date])  // CostData 조회 최적화
 @@index([project_id, date])
+@@index([apiVersion]) // Costs API vs Usage API 구분
+@@index([openaiProjectId]) // Project ID 조회
 @@index([user_id, created_at])  // BehaviorLog
 ```
 
@@ -1641,7 +1978,7 @@ bunx prisma studio
 
 ```bash
 # 데이터베이스 스키마 변경
-bunx prisma migrate dev --name add_new_table
+bunx prisma migrate dev --name add_costs_api_support
 
 # 타입 재생성
 bunx prisma generate
@@ -1693,7 +2030,7 @@ T3 Stack (Next.js + tRPC + Prisma + NextAuth + Tailwind) 채택
 **상태**: Accepted
 
 **컨텍스트**:
-NFR004 요구사항 (AES-256 암호화). API 자격증명 보안이 중요. 초기 제안은 Node.js crypto 모듈이었으나 사용자가 KMS 기반 요청.
+NFR004 요구사항 (AES-256 암호화). Admin API 자격증명 보안이 중요. 초기 제안은 Node.js crypto 모듈이었으나 사용자가 KMS 기반 요청.
 
 **결정**:
 AWS KMS Envelope Encryption 채택
@@ -1813,47 +2150,42 @@ Context Tracker + Value Metrics + Efficiency Calculator 패턴
 
 ---
 
-### ADR-007: Novel Pattern - 프로젝트 기반 API 키 격리
+### ADR-007: Novel Pattern - 팀 기반 Admin API 키 + 프로젝트 ID 필터링
 
-**날짜**: 2025-11-02 (2025-10-31 초안, 2025-11-02 개정)
+**날짜**: 2025-01-04 (2025-11-02 초안)
 **상태**: Accepted
 
 **컨텍스트**:
-태그 기반 비용 귀속은 사용자 규율 의존, 실패 확률 높음. PRD는 자동 귀속 요구 (FR007, FR010).
-초기에는 팀별 API 키를 고려했으나, 실제 사용 패턴에서는 팀 내 프로젝트별로 다른 API 키를 사용하는 것이 더 자연스러움.
+초기 설계는 프로젝트별 API 키 격리였으나, OpenAI Costs API는 organization-level Admin Key를 요구함. Organization 전체 비용을 조회하되 프로젝트별로 필터링하기 위해 Admin Key + Project ID 패턴으로 전환 필요.
 
 **결정**:
-프로젝트별 API 키 격리 기반 자동 귀속 + 팀 레벨 집계
+팀 레벨 Admin API 키 + 프로젝트 ID 필터링 기반 자동 귀속
 
 **근거**:
-- 프로젝트별 고유 OpenAI API 키 발급 (더 세밀한 격리)
-- `api_keys.project_id` 외래 키로 자동 연결
-- 일일 배치에서 API 키로 프로젝트 식별
-- 팀 비용은 프로젝트 비용 자동 집계
-- 태그 불필요
-- 프로젝트 멤버십 기반 명시적 접근 제어
+- Organization-level cost visibility (팀 전체 비용 한 번에 조회)
+- Project ID filtering으로 프로젝트별 비용 구분 유지
+- Admin Key 권한 관리로 보안 강화
+- Costs API의 time bucket aggregation으로 데이터 일관성 향상
 
 **구현**:
-- AWS KMS로 API 키 암호화 저장
-- Cost Collector가 `api_key_id` → `project_id` 매핑
-- ProjectMember 모델로 프로젝트 접근 제어
-- 팀 관리자는 모든 프로젝트 API 키 긴급 비활성화 가능
-- Isolation Advisor가 클라우드 계정/리소스 분리 권고
+- OrganizationApiKey 모델 (team-level, KMS encrypted)
+- Project.openaiProjectId 필드
+- cost-collector-v2.ts (Costs API client with pagination)
+- CostData.apiVersion으로 Usage API vs Costs API 구분
 
-**확장성**:
-- Epic 2에서 AWS/Azure도 동일 패턴 적용 (프로젝트별 계정/리소스 그룹 분리)
-- 프로젝트 멤버 역할 확장 가능 (현재는 평등한 멤버십)
+**마이그레이션 컨텍스트**:
+Initial design used project-level API keys. Migrating to team-level Admin Keys + Project ID filtering to support OpenAI Costs API, which requires organization-level authentication.
 
-**마이그레이션**:
-- Breaking change: 모든 기존 팀 API 키 삭제
-- 팀 멤버를 모든 프로젝트에 자동 추가
-- 사용자가 프로젝트별로 API 키 재등록 필요
+**변경 사항:**
+- API Key 소유: Project → Team (OrganizationApiKey)
+- 프로젝트 식별: API Key → OpenAI Project ID
+- 데이터 출처: Usage API → Costs API
+- 집계 방식: 세밀한 토큰 데이터 → 시간 버킷 집계 데이터
 
-**구현 완료 (2025-11-03)**:
-- ✅ enableApiKey, deleteApiKey 엔드포인트 추가
-- ✅ team.getMembers 엔드포인트 추가
-- ✅ 프로젝트 상세 페이지 UI 통합
-- ✅ 모달 기반 관리 인터페이스 구현
+**트레이드오프**:
+- 세밀한 토큰 데이터 손실 (line_item 집계로 대체)
+- 실시간성 저하 (8-24시간 지연)
+- 기존 Usage API 데이터 마이그레이션 필요
 
 ---
 
@@ -1905,112 +2237,45 @@ ADR-007에서 프로젝트 기반 API 키 격리 패턴을 정의했으나, 실�
   - 프로젝트 비용 데이터 조회
   - 멤버 관리 불가 (Team admin만)
 
+---
+
+### ADR-009: OpenAI Costs API Migration
+
+**날짜**: 2025-01-04
+**상태**: Accepted
+
+**컨텍스트**:
+OpenAI Usage API (`/v1/usage`)는 project-level API keys만 지원하며, organization-level cost visibility를 제공하지 않음. Costs API (`/v1/organization/costs`)는 organization-level Admin Key로 모든 프로젝트 비용을 조회하고 project_ids로 필터링 가능.
+
+**결정**:
+Usage API → Costs API 전환, Team-level Admin Key + Project ID 패턴 채택
+
+**근거**:
+- Organization-level cost visibility (team 전체 비용 한 번에 조회)
+- Project ID filtering으로 프로젝트별 비용 구분 유지
+- Time bucket aggregation으로 데이터 일관성 향상
+- Admin Key 권한 관리로 보안 강화
+
 **구현**:
-
-**Backend API (tRPC)**:
-```typescript
-// src/server/api/routers/team.ts
-team.getMembers: protectedProcedure
-  - 팀 멤버 목록 조회 (드롭다운용)
-  - 권한: 팀 멤버만
-  - 정렬: role (owner, admin, member) → createdAt
-
-// src/server/api/routers/project.ts
-project.enableApiKey: protectedProcedure
-  - API 키 재활성화
-  - 권한: 프로젝트 멤버 또는 Team admin
-  - Audit log: api_key_enabled
-
-project.deleteApiKey: protectedProcedure
-  - API 키 영구 삭제
-  - 권한: 프로젝트 멤버 또는 Team admin
-  - Audit log: api_key_deleted (삭제 전에 기록)
-  - 안전성: CostData.apiKeyId nullable (과거 데이터 보존)
-```
-
-**Frontend Components**:
-```typescript
-// src/components/dialogs/AddMemberDialog.tsx
-- Select 컴포넌트로 팀 멤버 드롭다운
-- 이미 추가된 멤버 disabled 처리
-- 선택한 멤버 미리보기
-- 로딩 상태, 에러 처리
-
-// src/components/dialogs/AddApiKeyDialog.tsx
-- Provider 선택 (현재 OpenAI만, 확장 가능)
-- Password input (API 키 마스킹)
-- 클라이언트 측 검증 (sk- prefix)
-- 보안 경고 표시
-
-// src/components/dialogs/ConfirmDeleteKeyDialog.tsx
-- Type-to-confirm: "삭제" 입력 필요
-- 사유 입력 (textarea, 1-500자)
-- 영구 삭제 경고 (복구 불가)
-- 과거 비용 데이터 보존 안내
-```
-
-**Page Integration**:
-```typescript
-// src/app/(dashboard)/projects/[id]/page.tsx
-- 2개 새로운 섹션 추가 (Members, API Keys)
-- 4개 다이얼로그 상태 관리
-- Query waterfall 회피 (getById에 필요한 데이터 포함)
-- Mutation 후 invalidate로 자동 새로고침
-```
-
-**대안**:
-
-**1. 인라인 폼 vs 모달**
-- **고려**: 섹션 내 인라인 폼으로 추가
-- **기각**: 페이지가 길어지고, 중요 작업에 집중력 떨어짐
-- **선택**: 모달이 중요 작업에 더 적합
-
-**2. 이메일 입력 vs 드롭다운**
-- **고려**: 이메일 직접 입력 + 자동완성
-- **기각**: 오타 위험, 팀 외부 사용자 추가 가능성
-- **선택**: 드롭다운이 더 안전하고 단순
-
-**3. 별도 페이지 vs 통합**
-- **고려**: /projects/[id]/members, /projects/[id]/api-keys 분리
-- **기각**: 네비게이션 복잡도 증가, 데이터 중복 fetch
-- **선택**: 단일 페이지 통합이 더 직관적
+- OrganizationApiKey 모델 (team-level)
+- Project.openaiProjectId 필드
+- cost-collector-v2.ts (Costs API client)
+- CostData.apiVersion 버전 관리
 
 **트레이드오프**:
+- 세밀한 토큰 데이터 → 집계 데이터 (line_item 레벨)
+- 실시간성 저하 (8-24시간 지연)
+- 기존 Usage API 데이터 마이그레이션 필요
 
-**장점**:
-- ✅ 일관된 UX (모든 중요 작업이 모달)
-- ✅ Type-to-confirm으로 사고 방지
-- ✅ 팀 멤버 드롭다운으로 오류 최소화
-- ✅ 완전한 API 키 생명주기 관리
-
-**단점**:
-- ⚠️ 모달이 많아질 수 있음 (현재 4개)
-- ⚠️ Query waterfall 가능성 (teamMembers query가 project query 이후)
-- ⚠️ 페이지가 길어짐 (5개 섹션)
-
-**해결 방안**:
-- 모달 수: 기능별로 명확히 분리되어 혼란 없음
-- Query waterfall: enabled 옵션으로 불필요한 fetch 방지
-- 페이지 길이: 섹션별 Card로 명확히 구분, 스크롤 자연스러움
-
-**검증 결과 (Code Review 2025-11-03)**:
-- ✅ T3 App 표준 85% 준수
-- ✅ TypeScript 사용 우수 95%
-- ✅ Loading state 완벽 구현 100%
-- ⚠️ 보안 이슈 발견 (API 키 노출, Rate limiting 없음)
-- ⚠️ 에러 메시지 한국어 변환 필요
-
-**향후 개선 계획**:
-1. Rate limiting 추가 (Upstash Ratelimit)
-2. API 키 last4 필드 DB 저장 (encryptedKey 노출 방지)
-3. 에러 메시지 한국어 번역
-4. Query 최적화 (N+1 방지, waterfall 제거)
-5. Audit log 트랜잭션 보장
+**롤백 계획**:
+- Feature flag: ENABLE_COSTS_API
+- 두 API 병행 운영 가능 (apiVersion으로 구분)
+- Breaking Changes 문서 참조: [BREAKING_CHANGES.md](./migration/BREAKING_CHANGES.md)
 
 ---
 
 _Generated by BMAD Decision Architecture Workflow v1.3.2_
-_Date: 2025-10-31_
-_Updated: 2025-11-03 (ADR-008 추가)_
+_Date: 2025-01-04_
+_Updated: 2025-01-04 (Costs API Migration Complete Rewrite)_
 _For: Issac_
 _Project: finops-for-ai (Level 2)_
