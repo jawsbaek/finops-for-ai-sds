@@ -15,6 +15,10 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logger } from "~/lib/logger";
+import {
+	encryptApiKey,
+	validateApiKey,
+} from "~/lib/services/encryption/api-key-manager";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { db } from "~/server/db";
 
@@ -735,5 +739,152 @@ export const teamRouter = createTRPCRouter({
 			);
 
 			return membership;
+		}),
+
+	/**
+	 * Register OpenAI Admin API Key for a team
+	 *
+	 * Only team owners and admins can register Admin API keys
+	 * Uses KMS envelope encryption to securely store the key
+	 */
+	registerAdminApiKey: protectedProcedure
+		.input(
+			z.object({
+				teamId: z.string(),
+				apiKey: z.string().min(20),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const userId = ctx.session.user.id;
+
+			// 1. Verify team membership (owner/admin only)
+			const teamMember = await db.teamMember.findUnique({
+				where: {
+					teamId_userId: {
+						teamId: input.teamId,
+						userId,
+					},
+				},
+			});
+
+			if (!teamMember || !["owner", "admin"].includes(teamMember.role)) {
+				throw new TRPCError({
+					code: "FORBIDDEN",
+					message: "Only team owners/admins can register Admin API keys",
+				});
+			}
+
+			// 2. Validate API key format
+			if (!validateApiKey(input.apiKey, "openai")) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Invalid OpenAI Admin API key format",
+				});
+			}
+
+			// 3. Encrypt API key with KMS
+			const { ciphertext, encryptedDataKey, iv } = await encryptApiKey(
+				input.apiKey,
+			);
+
+			// 4. Upsert Admin Key (update if exists, create if not)
+			const last4 = input.apiKey.slice(-4);
+
+			const adminKey = await db.organizationApiKey.upsert({
+				where: { teamId: input.teamId },
+				update: {
+					provider: "openai",
+					encryptedKey: ciphertext,
+					encryptedDataKey,
+					iv,
+					last4,
+					isActive: true,
+					keyType: "admin",
+					updatedAt: new Date(),
+				},
+				create: {
+					teamId: input.teamId,
+					provider: "openai",
+					encryptedKey: ciphertext,
+					encryptedDataKey,
+					iv,
+					last4,
+					isActive: true,
+					keyType: "admin",
+				},
+			});
+
+			// 5. Create audit log
+			await db.auditLog.create({
+				data: {
+					userId,
+					actionType: "admin_api_key_registered",
+					resourceType: "organization_api_key",
+					resourceId: adminKey.id,
+					metadata: {
+						teamId: input.teamId,
+						last4,
+					},
+				},
+			});
+
+			logger.info(
+				{
+					teamId: input.teamId,
+					adminKeyId: adminKey.id,
+					userId,
+					last4,
+				},
+				"Admin API key registered successfully",
+			);
+
+			return {
+				success: true,
+				keyId: adminKey.id,
+				last4: adminKey.last4,
+			};
+		}),
+
+	/**
+	 * Get Admin API Key status for a team
+	 *
+	 * Any team member can view the status (but not the actual key)
+	 */
+	getAdminApiKeyStatus: protectedProcedure
+		.input(z.object({ teamId: z.string() }))
+		.query(async ({ ctx, input }) => {
+			const userId = ctx.session.user.id;
+
+			// Verify team membership
+			const teamMember = await db.teamMember.findUnique({
+				where: {
+					teamId_userId: {
+						teamId: input.teamId,
+						userId,
+					},
+				},
+			});
+
+			if (!teamMember) {
+				throw new TRPCError({
+					code: "FORBIDDEN",
+					message: "You are not a member of this team",
+				});
+			}
+
+			// Get Admin API Key status (never return encrypted key)
+			const adminKey = await db.organizationApiKey.findUnique({
+				where: { teamId: input.teamId },
+				select: {
+					id: true,
+					last4: true,
+					isActive: true,
+					keyType: true,
+					createdAt: true,
+					updatedAt: true,
+				},
+			});
+
+			return adminKey;
 		}),
 });

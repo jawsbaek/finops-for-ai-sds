@@ -52,8 +52,9 @@ model Team {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  members  TeamMember[]
-  projects Project[]
+  members            TeamMember[]
+  projects           Project[]
+  organizationApiKey OrganizationApiKey? // 1:1 relation for OpenAI Admin API Key
 
   @@index([ownerId])
   @@map("teams")
@@ -74,22 +75,52 @@ model TeamMember {
   @@map("team_members")
 }
 
+// Team-level OpenAI Organization Admin API Key for Costs API
+model OrganizationApiKey {
+  id       String @id @default(cuid())
+  teamId   String @unique @map("team_id") // 1 Team : 1 Admin Key
+  provider String // 'openai' (future: support other providers)
+
+  // KMS Envelope Encryption (same pattern as ApiKey)
+  encryptedKey     String @map("encrypted_key") @db.Text
+  encryptedDataKey String @map("encrypted_data_key") @db.Text
+  iv               String // Initialization vector
+
+  // Security and metadata
+  last4     String   @db.VarChar(4) // Last 4 chars for UI display
+  isActive  Boolean  @default(true) @map("is_active")
+  keyType   String   @default("admin") @map("key_type") // 'admin' | 'service_account'
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@index([provider, isActive])
+  @@map("organization_api_keys")
+}
+
 model Project {
-  id          String   @id @default(cuid())
-  teamId      String   @map("team_id")
+  id          String  @id @default(cuid())
+  teamId      String  @map("team_id")
   name        String
   description String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // OpenAI Project ID for Costs API filtering
+  openaiProjectId String? @unique @map("openai_project_id") // e.g., "proj_abc123"
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   team       Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
   members    ProjectMember[]
-  apiKeys    ApiKey[]
+  apiKeys    ApiKey[] // Deprecated: Usage API project keys (to be reviewed after migration)
   costData   CostData[]
   metrics    ProjectMetrics?
   costAlerts CostAlert[]
 
   @@index([teamId])
+  @@index([openaiProjectId]) // Fast lookup for Costs API queries
   @@map("projects")
 }
 
@@ -141,16 +172,29 @@ model ApiKey {
 }
 
 model CostData {
-  id         String   @id @default(cuid())
-  projectId  String   @map("project_id")
-  apiKeyId   String?  @map("api_key_id") // Nullable to preserve historical data after API key deletion
-  provider   String // 'openai', 'aws', 'azure'
-  service    String // 'gpt-4', 'gpt-3.5-turbo', etc.
-  model      String?
+  id        String @id @default(cuid())
+  projectId String @map("project_id")
+
+  // Deprecated: Usage API fields (nullable after migration)
+  apiKeyId   String? @map("api_key_id") // Nullable to preserve historical data
+  snapshotId String? @map("snapshot_id") // OpenAI Usage API snapshot_id for deduplication
   tokens     Int?
-  cost       Decimal  @db.Decimal(10, 2)
-  date       DateTime @db.Date
-  snapshotId String?  @map("snapshot_id") // OpenAI snapshot_id for deduplication
+  model      String?
+
+  // Common fields (both APIs)
+  provider String // 'openai', 'aws', 'azure'
+  service  String // Usage API: 'gpt-4', Costs API: line_item
+  cost     Decimal  @db.Decimal(10, 2)
+  date     DateTime @db.Date // Usage API: single date, Costs API: converted from bucketStartTime
+
+  // Costs API specific fields
+  bucketStartTime DateTime? @map("bucket_start_time") // Unix timestamp → DateTime
+  bucketEndTime   DateTime? @map("bucket_end_time")
+  lineItem        String?   @map("line_item") // e.g., "Image models", "GPT-4"
+  currency        String?   @default("usd")
+
+  // API version tracking (to distinguish data source)
+  apiVersion String @default("usage_v1") @map("api_version") // 'usage_v1' | 'costs_v1'
 
   // Novel Pattern 1: Context
   taskType   String? @map("task_type")
@@ -161,8 +205,11 @@ model CostData {
   project Project @relation(fields: [projectId], references: [id])
   apiKey  ApiKey? @relation(fields: [apiKeyId], references: [id])
 
-  @@unique([apiKeyId, date, snapshotId])
+  // Deduplication strategy - separate for each API version
+  @@unique([projectId, bucketStartTime, bucketEndTime, lineItem, apiVersion], name: "unique_cost_bucket")
+  @@unique([apiKeyId, date, snapshotId], name: "unique_usage_snapshot") // Legacy Usage API
   @@index([projectId, date])
+  @@index([apiVersion]) // Query optimization for API version filtering
   @@map("cost_data")
 }
 

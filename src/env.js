@@ -27,6 +27,9 @@ export const env = createEnv({
 		// Cron job security
 		CRON_SECRET: z.string().optional(),
 
+		// Feature flags
+		ENABLE_COSTS_API: z.string().optional().default("false"), // "true" | "false"
+
 		// Email notifications
 		RESEND_API_KEY: z.string().optional(),
 		RESEND_FROM_EMAIL: z.string().email().optional(),
@@ -74,6 +77,7 @@ export const env = createEnv({
 		NEXTAUTH_URL: process.env.NEXTAUTH_URL,
 		UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
 		UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+		ENABLE_COSTS_API: process.env.ENABLE_COSTS_API,
 	},
 	/**
 	 * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially
