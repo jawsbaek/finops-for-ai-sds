@@ -119,9 +119,9 @@ export default function ReportsPage() {
 
 								<div className="mt-2 flex items-center gap-2">
 									{data.weekChange > 0 ? (
-										<TrendingUp className="h-4 w-4 text-danger" />
+										<TrendingUp className="h-4 w-4 text-destructive" />
 									) : (
-										<TrendingDown className="h-4 w-4 text-success" />
+										<TrendingDown className="h-4 w-4 text-primary" />
 									)}
 									<span
 										className={`font-medium text-sm ${
@@ -286,7 +286,7 @@ export default function ReportsPage() {
 											{data.bottom3.map((project, idx) => (
 												<div
 													key={`${project.projectName}-${idx}`}
-													className="rounded-lg border border-warning bg-warning/5 p-3"
+													className="rounded-lg border border-destructive bg-destructive/5 p-3"
 												>
 													<p className="font-medium text-foreground text-sm">
 														{project.projectName}

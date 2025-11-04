@@ -35,10 +35,10 @@ export function ValidationIndicator({
 			<Alert
 				data-testid="validation-indicator"
 				data-status="valid"
-				className="border-success/20 bg-success/10 dark:border-success/20 dark:bg-success/10"
+				className="border-primary/20 bg-primary/10 dark:border-primary/20 dark:bg-primary/10"
 			>
-				<CheckCircle2 className="h-4 w-4 text-success" />
-				<AlertDescription className="text-success">
+				<CheckCircle2 className="h-4 w-4 text-primary" />
+				<AlertDescription className="text-primary">
 					✓ Project ID validated successfully
 				</AlertDescription>
 			</Alert>

@@ -524,8 +524,8 @@ export default function ProjectDetailPage() {
 											{apiKey.provider} API Key
 										</p>
 										{apiKey.isActive ? (
-											<span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 font-medium text-success text-xs">
-												<span className="h-1.5 w-1.5 rounded-full bg-success" />
+											<span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary text-xs">
+												<span className="h-1.5 w-1.5 rounded-full bg-primary" />
 												활성
 											</span>
 										) : (
@@ -663,7 +663,7 @@ export default function ProjectDetailPage() {
 					{/* Success Count Input */}
 					<div className="space-y-2">
 						<Label htmlFor="successCount">
-							성공한 작업 수 <span className="text-error">*</span>
+							성공한 작업 수 <span className="text-destructive">*</span>
 						</Label>
 						<Input
 							id="successCount"

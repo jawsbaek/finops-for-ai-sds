@@ -24,28 +24,49 @@ const FORBIDDEN_PATTERNS = [
 	/to-gray-\d+/g,
 	/via-gray-\d+/g,
 
-	// Blue palette - use info semantic color
+	// Blue palette - use primary instead
 	/text-blue-\d+/g,
 	/bg-blue-\d+/g,
 	/border-blue-\d+/g,
 
-	// Green palette - use success semantic color
+	// Green palette - use primary instead
 	/text-green-\d+/g,
 	/bg-green-\d+/g,
 	/border-green-\d+/g,
 
-	// Red palette - use error semantic color
+	// Red palette - use destructive instead
 	/text-red-\d+/g,
 	/bg-red-\d+/g,
 	/border-red-\d+/g,
 
-	// Yellow/Orange palette - use warning semantic color
+	// Yellow/Orange/Amber palette - use destructive instead
 	/text-yellow-\d+/g,
 	/bg-yellow-\d+/g,
 	/border-yellow-\d+/g,
 	/text-orange-\d+/g,
 	/bg-orange-\d+/g,
 	/border-orange-\d+/g,
+	/text-amber-\d+/g,
+	/bg-amber-\d+/g,
+	/border-amber-\d+/g,
+
+	// Undefined semantic colors - NOT defined in globals.css
+	/text-info\b/g,
+	/bg-info\b/g,
+	/bg-info\//g,
+	/border-info\b/g,
+	/text-warning\b/g,
+	/bg-warning\b/g,
+	/bg-warning\//g,
+	/border-warning\b/g,
+	/text-success\b/g,
+	/bg-success\b/g,
+	/bg-success\//g,
+	/border-success\b/g,
+	/text-error\b/g,
+	/bg-error\b/g,
+	/bg-error\//g,
+	/border-error\b/g,
 
 	// Other common palettes
 	/text-slate-\d+/g,
@@ -82,30 +103,57 @@ const SUGGESTIONS: Record<string, string[]> = {
 	"border-gray-300": ["border-border"],
 	"border-gray-400": ["border-border"],
 
-	"text-blue-400": ["text-info"],
-	"text-blue-500": ["text-info"],
-	"text-blue-600": ["text-info"],
-	"text-blue-700": ["text-info"],
-	"bg-blue-50": ["bg-info/10"],
-	"bg-blue-100": ["bg-info/10"],
-	"border-blue-500": ["border-info"],
+	"text-blue-400": ["text-primary"],
+	"text-blue-500": ["text-primary"],
+	"text-blue-600": ["text-primary"],
+	"text-blue-700": ["text-primary"],
+	"bg-blue-50": ["bg-primary/10"],
+	"bg-blue-100": ["bg-primary/10"],
+	"border-blue-200": ["border-primary"],
+	"border-blue-300": ["border-primary"],
+	"border-blue-500": ["border-primary"],
 
-	"text-green-500": ["text-success"],
-	"text-green-600": ["text-success"],
-	"bg-green-50": ["bg-success/10"],
-	"border-green-500": ["border-success"],
+	"text-green-500": ["text-primary"],
+	"text-green-600": ["text-primary"],
+	"bg-green-50": ["bg-primary/10"],
+	"border-green-500": ["border-primary"],
 
-	"text-red-500": ["text-error"],
-	"text-red-600": ["text-error"],
-	"bg-red-50": ["bg-error/10"],
-	"border-red-500": ["border-error"],
+	"text-red-500": ["text-destructive"],
+	"text-red-600": ["text-destructive"],
+	"bg-red-50": ["bg-destructive/10"],
+	"border-red-500": ["border-destructive"],
 
-	"text-yellow-500": ["text-warning"],
-	"text-yellow-600": ["text-warning"],
-	"text-orange-500": ["text-warning"],
-	"bg-yellow-50": ["bg-warning/10"],
-	"bg-orange-50": ["bg-warning/10"],
-	"border-yellow-500": ["border-warning"],
+	"text-yellow-500": ["text-destructive"],
+	"text-yellow-600": ["text-destructive"],
+	"text-orange-500": ["text-destructive"],
+	"text-amber-600": ["text-destructive"],
+	"text-amber-700": ["text-destructive"],
+	"text-amber-900": ["text-foreground"],
+	"bg-yellow-50": ["bg-destructive/10"],
+	"bg-orange-50": ["bg-destructive/10"],
+	"bg-amber-50": ["bg-destructive/10"],
+	"bg-amber-100": ["bg-destructive/20"],
+	"border-yellow-500": ["border-destructive"],
+	"border-amber-200": ["border-destructive/50"],
+	"border-amber-300": ["border-destructive/50"],
+
+	// Undefined semantic colors - use globals.css tokens instead
+	"text-info": ["text-primary"],
+	"bg-info": ["bg-primary"],
+	"bg-info/": ["bg-primary/"],
+	"border-info": ["border-primary"],
+	"text-warning": ["text-destructive"],
+	"bg-warning": ["bg-destructive"],
+	"bg-warning/": ["bg-destructive/"],
+	"border-warning": ["border-destructive"],
+	"text-success": ["text-primary"],
+	"bg-success": ["bg-primary"],
+	"bg-success/": ["bg-primary/"],
+	"border-success": ["border-primary"],
+	"text-error": ["text-destructive"],
+	"bg-error": ["bg-destructive"],
+	"bg-error/": ["bg-destructive/"],
+	"border-error": ["border-destructive"],
 };
 
 interface Violation {

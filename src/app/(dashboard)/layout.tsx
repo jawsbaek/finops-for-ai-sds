@@ -33,7 +33,7 @@ export default async function DashboardLayout({
 						>
 							<button
 								type="submit"
-								className="rounded-md bg-error px-3 py-2 font-semibold text-error-foreground text-sm hover:bg-error/90"
+								className="rounded-md bg-destructive px-3 py-2 font-semibold text-destructive-foreground text-sm hover:bg-destructive/90"
 							>
 								Logout
 							</button>

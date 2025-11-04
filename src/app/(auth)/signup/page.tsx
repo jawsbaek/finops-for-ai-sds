@@ -99,8 +99,8 @@ export default function SignupPage() {
 
 				<form className="mt-8 space-y-6" onSubmit={handleSubmit}>
 					{errors.general && (
-						<div className="rounded-md border border-error/30 bg-error/10 p-4">
-							<p className="text-error text-sm">{errors.general}</p>
+						<div className="rounded-md border border-destructive/30 bg-destructive/10 p-4">
+							<p className="text-destructive text-sm">{errors.general}</p>
 						</div>
 					)}
 
@@ -121,7 +121,7 @@ export default function SignupPage() {
 								placeholder="Full name"
 							/>
 							{errors.name && (
-								<p className="mt-1 text-error text-sm">{errors.name}</p>
+								<p className="mt-1 text-destructive text-sm">{errors.name}</p>
 							)}
 						</div>
 						<div>
@@ -140,7 +140,7 @@ export default function SignupPage() {
 								placeholder="Email address"
 							/>
 							{errors.email && (
-								<p className="mt-1 text-error text-sm">{errors.email}</p>
+								<p className="mt-1 text-destructive text-sm">{errors.email}</p>
 							)}
 						</div>
 						<div>
@@ -159,7 +159,9 @@ export default function SignupPage() {
 								placeholder="Password (min 8 characters)"
 							/>
 							{errors.password && (
-								<p className="mt-1 text-error text-sm">{errors.password}</p>
+								<p className="mt-1 text-destructive text-sm">
+									{errors.password}
+								</p>
 							)}
 						</div>
 					</div>

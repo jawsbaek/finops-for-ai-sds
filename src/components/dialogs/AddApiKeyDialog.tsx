@@ -153,14 +153,12 @@ export function AddApiKeyDialog({
 						</p>
 					</div>
 
-					<div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
+					<div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3">
 						<div className="flex items-start gap-2">
-							<AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+							<AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-destructive" />
 							<div className="space-y-1 text-sm leading-relaxed">
-								<p className="font-semibold text-amber-900 dark:text-amber-100">
-									보안 주의사항
-								</p>
-								<ul className="ml-4 list-disc space-y-1 text-amber-800 dark:text-amber-200">
+								<p className="font-semibold text-foreground">보안 주의사항</p>
+								<ul className="ml-4 list-disc space-y-1 text-muted-foreground">
 									<li>API 키는 암호화되어 안전하게 저장됩니다</li>
 									<li>저장 후 전체 키는 다시 확인할 수 없습니다</li>
 									<li>마지막 4자리만 표시됩니다</li>

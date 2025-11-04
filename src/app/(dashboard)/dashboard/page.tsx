@@ -137,11 +137,11 @@ export default function DashboardPage() {
 
 			{/* Data Status Info */}
 			{!isLoading && costSummary && (
-				<div className="rounded-lg border border-info/30 bg-info/10 p-4">
+				<div className="rounded-lg border border-primary/30 bg-primary/10 p-4">
 					<div className="flex">
 						<div className="flex-shrink-0">
 							<svg
-								className="h-5 w-5 text-info"
+								className="h-5 w-5 text-primary"
 								viewBox="0 0 20 20"
 								fill="currentColor"
 							>
@@ -154,7 +154,7 @@ export default function DashboardPage() {
 							</svg>
 						</div>
 						<div className="ml-3 flex-1">
-							<p className="text-info-foreground text-sm">
+							<p className="text-foreground text-sm">
 								<strong>Note:</strong> OpenAI API usage data is delayed by 8-24
 								hours. The cost shown here reflects usage from 1-2 days ago, not
 								real-time usage.

@@ -100,11 +100,13 @@ const ProjectCardComponent = ({
 				{trend && (
 					<div className="flex items-center gap-2 text-sm">
 						{isIncreasing ? (
-							<TrendingUp className="h-4 w-4 text-error" />
+							<TrendingUp className="h-4 w-4 text-destructive" />
 						) : (
-							<TrendingDown className="h-4 w-4 text-success" />
+							<TrendingDown className="h-4 w-4 text-primary" />
 						)}
-						<span className={isIncreasing ? "text-error" : "text-success"}>
+						<span
+							className={isIncreasing ? "text-destructive" : "text-primary"}
+						>
 							{trend.change}
 						</span>
 						<span className="text-muted-foreground">

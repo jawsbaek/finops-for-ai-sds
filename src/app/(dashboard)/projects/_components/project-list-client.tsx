@@ -124,7 +124,7 @@ export function ProjectListClient({
 							<div className="grid gap-4 py-4">
 								<div className="grid gap-2">
 									<Label htmlFor="name">
-										프로젝트명 <span className="text-error">*</span>
+										프로젝트명 <span className="text-destructive">*</span>
 									</Label>
 									<Input
 										id="name"
@@ -178,11 +178,11 @@ export function ProjectListClient({
 
 			{/* No Team Warning */}
 			{hasNoTeam && (
-				<div className="rounded-lg border border-warning bg-warning/10 p-4">
+				<div className="rounded-lg border border-destructive bg-destructive/10 p-4">
 					<div className="flex items-start gap-3">
-						<div className="rounded-full bg-warning/20 p-2">
+						<div className="rounded-full bg-destructive/20 p-2">
 							<svg
-								className="h-5 w-5 text-warning"
+								className="h-5 w-5 text-destructive"
 								fill="none"
 								viewBox="0 0 24 24"
 								stroke="currentColor"

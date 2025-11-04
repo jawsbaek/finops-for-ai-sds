@@ -75,8 +75,8 @@ const StatCardComponent = ({
 	const clickable = !!onClick;
 
 	const trendIcon = {
-		up: <TrendingUp className="h-4 w-4 text-success" />,
-		down: <TrendingDown className="h-4 w-4 text-error" />,
+		up: <TrendingUp className="h-4 w-4 text-primary" />,
+		down: <TrendingDown className="h-4 w-4 text-destructive" />,
 		neutral: <Minus className="h-4 w-4 text-muted-foreground" />,
 	}[trend];
 
