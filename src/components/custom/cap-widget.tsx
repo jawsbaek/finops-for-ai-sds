@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import type React from "react";
+import { logger } from "~/lib/logger";
 
 declare module "react" {
 	namespace JSX {
@@ -61,6 +62,8 @@ interface CapWidgetProps
  *
  * @example
  * ```tsx
+ * import { logger } from "~/lib/logger";
+ *
  * <CapWidget
  *   endpoint="/api/cap/"
  *   onSolve={(token) => {
@@ -68,7 +71,8 @@ interface CapWidgetProps
  *     toast.success("Verified!");
  *   }}
  *   onError={(message) => {
- *     console.error("CAPTCHA error:", message);
+ *     logger.error({ message }, "CAPTCHA verification error");
+ *     toast.error("Verification failed");
  *   }}
  *   locale={{
  *     initial: "I'm not a robot",
@@ -108,7 +112,18 @@ const CapWidget = forwardRef<HTMLDivElement, CapWidgetProps>(
 			(e: Event) => {
 				const customEvent = e as CustomEvent<{ token?: string }>;
 				const token = customEvent.detail?.token;
-				if (!token) return;
+
+				if (!token || typeof token !== "string") {
+					logger.warn(
+						{
+							hasDetail: !!customEvent.detail,
+							tokenType: typeof token,
+						},
+						"CAPTCHA solve event missing token",
+					);
+					return;
+				}
+
 				onSolve?.(token);
 			},
 			[onSolve],
@@ -118,7 +133,18 @@ const CapWidget = forwardRef<HTMLDivElement, CapWidgetProps>(
 			(e: Event) => {
 				const customEvent = e as CustomEvent<{ message?: string }>;
 				const message = customEvent.detail?.message;
-				if (!message) return;
+
+				if (!message || typeof message !== "string") {
+					logger.warn(
+						{
+							hasDetail: !!customEvent.detail,
+							messageType: typeof message,
+						},
+						"CAPTCHA error event missing message",
+					);
+					return;
+				}
+
 				onError?.(message);
 			},
 			[onError],

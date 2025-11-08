@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { CapWidget } from "~/components/wed/cap-widget";
+import { CapWidget } from "~/components/custom/cap-widget";
 import { useTranslations } from "~/lib/i18n";
+import { logger } from "~/lib/logger";
 
 const loginSchema = z.object({
 	email: z.string().email("Invalid email address"),
@@ -75,11 +76,17 @@ export default function LoginPage() {
 			toast.success(t.captcha.loginSuccess);
 			router.push("/dashboard");
 		} catch (error) {
-			if (process.env.NODE_ENV === "development") {
-				console.error("Login error:", error);
-			}
 			const errorMsg =
 				error instanceof Error ? error.message : "An unexpected error occurred";
+
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error),
+					email,
+				},
+				"Login attempt failed",
+			);
+
 			setErrors({ general: errorMsg });
 			toast.error(t.captcha.loginError, {
 				description: errorMsg,

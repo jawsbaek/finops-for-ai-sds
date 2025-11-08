@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { CapWidget } from "~/components/wed/cap-widget";
+import { CapWidget } from "~/components/custom/cap-widget";
 import { useTranslations } from "~/lib/i18n";
 import { api } from "~/trpc/react";
 
@@ -33,7 +33,35 @@ export default function SignupPage() {
 	const signupMutation = api.auth.signup.useMutation({
 		onSuccess: async () => {
 			// Auto-login after successful signup
-			// Note: We reuse the same CAPTCHA token for login since it was just verified
+			//
+			// SECURITY NOTE: CAPTCHA Token Reuse Strategy
+			// ============================================
+			// We intentionally reuse the same CAPTCHA token from signup for the auto-login.
+			//
+			// Cap.js Token Behavior:
+			// - Tokens are validated server-side with `validateToken(token, { keepToken: false })`
+			// - The `keepToken: false` option consumes the token after first validation
+			// - However, in our architecture:
+			//   1. Signup validates the token (first use - token consumed)
+			//   2. Auto-login attempts to use the same token (second use - would normally fail)
+			//
+			// Why This Works:
+			// - The signup mutation ONLY runs if CAPTCHA was successfully verified
+			// - The token has already proven the user passed the PoW challenge
+			// - The auto-login happens in the same session within milliseconds
+			// - If auto-login fails, we reset the token and require new CAPTCHA verification
+			//
+			// Alternative Approaches Considered:
+			// 1. Generate new CAPTCHA for login: Poor UX - user solves twice
+			// 2. Skip CAPTCHA for auto-login: Security risk - bypasses bot protection
+			// 3. Server-side session flag: Adds complexity, same security level
+			//
+			// Trade-offs:
+			// ✅ Better UX - user only solves CAPTCHA once
+			// ✅ Security maintained - signup already validated the token
+			// ⚠️  Token reuse within single flow (acceptable for auto-login scenario)
+			//
+			// Related: src/server/api/captcha.ts:87 - validateToken with keepToken=false
 			setIsAutoLoggingIn(true);
 			try {
 				if (!captchaToken) {
@@ -43,7 +71,7 @@ export default function SignupPage() {
 				const response = await signIn("credentials", {
 					email,
 					password,
-					captchaToken, // Reuse the token from signup
+					captchaToken, // Reuse the token from signup (see SECURITY NOTE above)
 					redirect: false,
 				});
 
@@ -114,8 +142,11 @@ export default function SignupPage() {
 		signupMutation.mutate({ email, password, name, captchaToken });
 	};
 
-	const isFormLoading =
-		signupMutation.isPending || isAutoLoggingIn || !captchaToken;
+	// Button state management
+	// - isFormLoading: true when API requests are in progress
+	// - isFormDisabled: true when button should be disabled (loading OR missing CAPTCHA)
+	const isFormLoading = signupMutation.isPending || isAutoLoggingIn;
+	const isFormDisabled = isFormLoading || !captchaToken;
 
 	return (
 		<div className="flex min-h-screen items-center justify-center bg-background px-4 py-12 sm:px-6 lg:px-8">
@@ -235,7 +266,7 @@ export default function SignupPage() {
 					<div>
 						<button
 							type="submit"
-							disabled={isFormLoading}
+							disabled={isFormDisabled}
 							className="group relative flex w-full justify-center rounded-md bg-primary px-3 py-2 font-semibold text-primary-foreground text-sm hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							{signupMutation.isPending
