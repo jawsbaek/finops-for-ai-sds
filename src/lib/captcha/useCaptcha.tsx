@@ -25,7 +25,7 @@
 
 "use client";
 
-import { Cap } from "@cap.js/widget";
+import Cap from "@cap.js/widget";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "~/lib/i18n";
 
