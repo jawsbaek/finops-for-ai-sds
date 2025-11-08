@@ -17,6 +17,13 @@ let capInstance: Cap | null = null;
 
 function getCapInstance(): Cap {
 	if (!capInstance) {
+		// Production safety check: CAP_BYPASS must be false in production
+		if (process.env.NODE_ENV === "production" && env.CAP_BYPASS) {
+			throw new Error(
+				"SECURITY ERROR: CAP_BYPASS must be false in production environment",
+			);
+		}
+
 		capInstance = new Cap({
 			// Use file system state (default)
 			// Alternative: Implement custom storage with database hooks

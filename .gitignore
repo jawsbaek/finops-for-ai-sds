@@ -54,4 +54,4 @@ yarn-error.log*
 
 # worktrees
 .worktrees/
-.neon
+.neon.cap-tokens

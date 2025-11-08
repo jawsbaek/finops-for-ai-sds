@@ -101,7 +101,7 @@ export const messages = {
 		verifying: "보안 검증 중...",
 		verificationFailed: "보안 검증에 실패했습니다. 다시 시도해주세요.",
 		verificationError: "CAPTCHA 검증 중 오류가 발생했습니다.",
-		tokenRequired: "CAPTCHA token is required",
+		tokenRequired: "CAPTCHA 토큰이 필요합니다",
 		signingIn: "로그인 중...",
 		creatingAccount: "계정 생성 중...",
 		loginFailed: "로그인 실패",

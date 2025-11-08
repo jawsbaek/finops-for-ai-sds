@@ -32,26 +32,41 @@ export default function SignupPage() {
 	const signupMutation = api.auth.signup.useMutation({
 		onSuccess: async () => {
 			// Auto-login after successful signup
-			const response = await signIn("credentials", {
-				email,
-				password,
-				redirect: false,
-			});
-
-			if (response?.ok) {
-				// Note: isLoading remains true during navigation to prevent duplicate clicks
-				toast.success(t.captcha.signupSuccess, {
-					description: "대시보드로 이동합니다.",
+			// Need to execute CAPTCHA again for login (tokens are single-use)
+			try {
+				const captchaToken = await executeCaptcha();
+				const response = await signIn("credentials", {
+					email,
+					password,
+					captchaToken,
+					redirect: false,
 				});
-				router.push("/dashboard");
-			} else {
+
+				if (response?.ok) {
+					// Note: isLoading remains true during navigation to prevent duplicate clicks
+					toast.success(t.captcha.signupSuccess, {
+						description: "대시보드로 이동합니다.",
+					});
+					router.push("/dashboard");
+				} else {
+					setErrors({
+						general:
+							"Account created but login failed. Please try logging in manually.",
+					});
+					toast.error("자동 로그인 실패", {
+						description:
+							"Account created but login failed. Please try logging in manually.",
+					});
+				}
+			} catch (error) {
+				// CAPTCHA failed during auto-login
 				setErrors({
 					general:
-						"Account created but login failed. Please try logging in manually.",
+						"Account created but auto-login failed. Please log in manually.",
 				});
 				toast.error("자동 로그인 실패", {
 					description:
-						"Account created but login failed. Please try logging in manually.",
+						"Account created but auto-login failed. Please log in manually.",
 				});
 			}
 		},

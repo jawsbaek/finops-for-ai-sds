@@ -7,6 +7,12 @@ beforeAll(() => {
 		"postgresql://test:test@localhost:5432/test?schema=public";
 	process.env.NEXTAUTH_SECRET = "test-secret-key-for-testing";
 	process.env.NEXTAUTH_URL = "http://localhost:3000";
+
+	// CAPTCHA environment variables
+	process.env.NEXT_PUBLIC_CAP_SITE_KEY = "test-site-key-1234567890abcdef";
+	process.env.CAP_SECRET_KEY = "test-secret-key-32-chars-12345678";
+	process.env.CAP_DIFFICULTY = "100000";
+	process.env.CAP_BYPASS = "true"; // Enable bypass mode for tests
 });
 
 // Mock pino logger to suppress logs during tests

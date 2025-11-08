@@ -5,11 +5,24 @@
  * This endpoint is called by the Cap.js widget to initiate CAPTCHA verification.
  */
 
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { logger } from "~/lib/logger";
 import { createCaptchaChallenge } from "~/server/api/captcha";
+import { rateLimits } from "~/server/api/ratelimit";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+	// Rate limiting: 100 requests/min per IP
+	const ip = request.headers.get("x-forwarded-for") ?? "anonymous";
+	const { success } = await rateLimits.normal.limit(ip);
+
+	if (!success) {
+		logger.warn({ ip }, "Rate limit exceeded for CAPTCHA challenge");
+		return NextResponse.json(
+			{ error: "Rate limit exceeded. Please try again later." },
+			{ status: 429 },
+		);
+	}
 	try {
 		const challenge = await createCaptchaChallenge();
 
