@@ -17,8 +17,15 @@ let capInstance: Cap | null = null;
 
 function getCapInstance(): Cap {
 	if (!capInstance) {
-		// Note: CAP_BYPASS production validation is now handled in src/env.js
-		// using Zod's refine() for build-time validation
+		// SECURITY: Runtime validation for production environment
+		// Build-time validation in env.js caused false positives during `next build`
+		// so we validate at runtime when the Cap instance is actually used
+		if (process.env.NODE_ENV === "production" && env.CAP_BYPASS) {
+			throw new Error(
+				"SECURITY ERROR: CAP_BYPASS must be false in production environment",
+			);
+		}
+
 		capInstance = new Cap({
 			// Use file system state (default)
 			// Alternative: Implement custom storage with database hooks
