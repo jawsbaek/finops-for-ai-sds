@@ -50,12 +50,16 @@ export async function POST(request: NextRequest) {
 		logger.error(
 			{
 				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
 			},
 			"Failed to create CAPTCHA challenge",
 		);
 
 		return NextResponse.json(
-			{ error: "Failed to create challenge" },
+			{
+				error: "Failed to create challenge",
+				message: error instanceof Error ? error.message : String(error),
+			},
 			{ status: 500, headers },
 		);
 	}

@@ -41,6 +41,11 @@ function getCapInstance(): Cap {
 			//
 			// See: src/server/api/captcha-storage.ts for implementation details
 			storage: databaseStorage,
+
+			// CRITICAL: Disable filesystem state management in serverless environments
+			// When using custom storage, Cap.js must not attempt to read/write .cap-tokens file
+			// because serverless filesystems are ephemeral and read-only after deployment
+			noFSState: true,
 		});
 	}
 	return capInstance;
@@ -121,24 +126,18 @@ export async function createCaptchaChallenge() {
 	const cap = getCapInstance();
 
 	const challenge = await cap.createChallenge({
-		challengeCount: 50, // Number of hashes to solve
-		challengeSize: 32, // Bytes per challenge
-		// Convert CAP_DIFFICULTY (iterations) to Cap.js difficulty level
+		challengeCount: 50, // Number of hashes to solve (default: 50)
+		challengeSize: 32, // Bytes per challenge (default: 32)
+		// Difficulty level for proof-of-work computation
 		//
-		// Cap.js uses a "difficulty level" that gets multiplied by 2000 internally
-		// to determine the actual number of SHA-256 hash iterations required.
+		// Cap.js difficulty values:
+		// - 1-4: Fast (< 1 second) - suitable for high-traffic sites
+		// - 5-10: Medium (1-3 seconds) - balanced security/UX
+		// - 10+: Slow (3+ seconds) - high security, poor UX
 		//
-		// Formula: difficulty = iterations / 2000
-		// Reverse: iterations = difficulty × 2000
-		//
-		// Example conversions:
-		// - 100,000 iterations → difficulty level 50
-		// - 200,000 iterations → difficulty level 100
-		// - 50,000 iterations → difficulty level 25
-		//
-		// The division by 2000 converts our env variable (total iterations)
-		// into Cap.js's internal difficulty representation.
-		challengeDifficulty: Math.floor(env.CAP_DIFFICULTY / 2000),
+		// Use the default difficulty (4) for optimal UX
+		// The CAP_DIFFICULTY env var is kept for future customization
+		challengeDifficulty: 4,
 		expiresMs: 600000, // 10 minutes
 	});
 
