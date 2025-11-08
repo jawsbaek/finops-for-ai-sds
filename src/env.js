@@ -52,7 +52,19 @@ export const env = createEnv({
 		// Cap.js CAPTCHA
 		CAP_SECRET_KEY: z.string().min(32),
 		CAP_DIFFICULTY: z.coerce.number().int().positive().default(100000),
-		CAP_BYPASS: z.coerce.boolean().default(false),
+		// CAP_BYPASS: Parse boolean correctly from string values
+		// - "true", "1", "yes" → true
+		// - "false", "0", "no", undefined, "" → false
+		CAP_BYPASS: z
+			.string()
+			.optional()
+			.default("false")
+			.transform((val) => {
+				const normalized = val.toLowerCase().trim();
+				return (
+					normalized === "true" || normalized === "1" || normalized === "yes"
+				);
+			}),
 		// Note: CAP_BYPASS validation moved to runtime check in captcha.ts
 		// Build-time validation was causing false positives during `next build`
 	},
