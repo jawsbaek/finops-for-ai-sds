@@ -11,9 +11,11 @@ import { TRPCError, initTRPC } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
+import { getServerTranslations } from "~/lib/i18n";
 import { logger } from "~/lib/logger";
 import { auth } from "~/server/auth";
 import { db } from "~/server/db";
+import { verifyCaptchaToken } from "./captcha";
 import { rateLimits } from "./ratelimit";
 
 /**
@@ -200,3 +202,90 @@ export const sensitiveProcedure = protectedProcedure.use(
 export const normalProcedure = protectedProcedure.use(
 	rateLimitMiddleware("normal"),
 );
+
+/**
+ * CAPTCHA verification middleware
+ *
+ * Validates Cap.js proof-of-work token from client
+ * Extracts captchaToken from input and validates it
+ * Note: captchaToken will be removed by the procedure's zod schema
+ */
+const captchaMiddleware = t.middleware(async ({ ctx, next, getRawInput }) => {
+	const t = getServerTranslations();
+
+	// Get raw input from the request
+	const rawInput = await getRawInput();
+	const input = rawInput as { captchaToken?: string };
+
+	if (!input?.captchaToken) {
+		logger.warn(
+			{
+				userId: ctx.session?.user?.id,
+			},
+			"CAPTCHA token missing from request",
+		);
+
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message: t.captcha.tokenRequired,
+		});
+	}
+
+	// Verify token
+	const isValid = await verifyCaptchaToken(input.captchaToken);
+
+	if (!isValid) {
+		logger.warn(
+			{
+				userId: ctx.session?.user?.id,
+				tokenPrefix: input.captchaToken.slice(0, 10),
+			},
+			"CAPTCHA verification failed",
+		);
+
+		throw new TRPCError({
+			code: "FORBIDDEN",
+			message: t.captcha.verificationFailed,
+		});
+	}
+
+	logger.info(
+		{
+			userId: ctx.session?.user?.id,
+		},
+		"CAPTCHA verification successful",
+	);
+
+	return next({
+		ctx,
+	});
+});
+
+/**
+ * Public CAPTCHA procedure (for unauthenticated operations like login/signup)
+ *
+ * Applies CAPTCHA verification without authentication requirement
+ * Use for:
+ * - Login
+ * - Signup
+ * - Password reset
+ */
+export const publicCaptchaProcedure = publicProcedure.use(captchaMiddleware);
+
+/**
+ * CAPTCHA-protected procedure (for authenticated operations)
+ *
+ * Combines protection, rate limiting, and CAPTCHA verification
+ * Use for highly sensitive operations:
+ * - API key management (create, delete, toggle)
+ * - Critical admin operations
+ * - Sensitive member management
+ *
+ * Order of middleware execution:
+ * 1. protectedProcedure (auth check)
+ * 2. rateLimitMiddleware (rate limit)
+ * 3. captchaMiddleware (CAPTCHA verification)
+ */
+export const captchaProcedure = protectedProcedure
+	.use(rateLimitMiddleware("sensitive"))
+	.use(captchaMiddleware);

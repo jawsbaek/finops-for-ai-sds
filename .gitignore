@@ -54,4 +54,10 @@ yarn-error.log*
 
 # worktrees
 .worktrees/
+
+# Neon database
 .neon
+
+# Cap.js CAPTCHA tokens (runtime state, should never be committed)
+.cap-tokens
+.data/

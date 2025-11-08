@@ -25,7 +25,11 @@ export const env = createEnv({
 		AWS_KMS_KEY_ID: z.string().optional(),
 
 		// Cron job security
-		CRON_SECRET: z.string().optional(),
+		// SECURITY: Required in production to prevent unauthorized cron job access
+		CRON_SECRET:
+			process.env.NODE_ENV === "production"
+				? z.string().min(32)
+				: z.string().optional(),
 
 		// Feature flags
 		ENABLE_COSTS_API: z.string().optional().default("false"), // "true" | "false"
@@ -44,6 +48,13 @@ export const env = createEnv({
 		// Rate limiting (Upstash Redis)
 		UPSTASH_REDIS_REST_URL: z.string().url().optional(),
 		UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
+
+		// Cap.js CAPTCHA
+		CAP_SECRET_KEY: z.string().min(32),
+		CAP_DIFFICULTY: z.coerce.number().int().positive().default(100000),
+		CAP_BYPASS: z.coerce.boolean().default(false),
+		// Note: CAP_BYPASS validation moved to runtime check in captcha.ts
+		// Build-time validation was causing false positives during `next build`
 	},
 
 	/**
@@ -53,6 +64,7 @@ export const env = createEnv({
 	 */
 	client: {
 		// NEXT_PUBLIC_CLIENTVAR: z.string(),
+		NEXT_PUBLIC_CAP_SITE_KEY: z.string().min(1),
 	},
 
 	/**
@@ -78,6 +90,10 @@ export const env = createEnv({
 		UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
 		UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
 		ENABLE_COSTS_API: process.env.ENABLE_COSTS_API,
+		CAP_SECRET_KEY: process.env.CAP_SECRET_KEY,
+		CAP_DIFFICULTY: process.env.CAP_DIFFICULTY,
+		CAP_BYPASS: process.env.CAP_BYPASS,
+		NEXT_PUBLIC_CAP_SITE_KEY: process.env.NEXT_PUBLIC_CAP_SITE_KEY,
 	},
 	/**
 	 * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

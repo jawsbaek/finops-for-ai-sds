@@ -5,18 +5,19 @@ import { ERROR_MESSAGES } from "~/lib/error-messages";
 import {
 	createTRPCRouter,
 	protectedProcedure,
-	publicProcedure,
+	publicCaptchaProcedure,
 } from "~/server/api/trpc";
 
 const BCRYPT_ROUNDS = 10;
 
 export const authRouter = createTRPCRouter({
-	signup: publicProcedure
+	signup: publicCaptchaProcedure
 		.input(
 			z.object({
 				email: z.string().email(),
 				password: z.string().min(8, "Password must be at least 8 characters"),
 				name: z.string().optional(),
+				captchaToken: z.string().min(1),
 			}),
 		)
 		.mutation(async ({ input, ctx }) => {
@@ -80,11 +81,12 @@ export const authRouter = createTRPCRouter({
 			};
 		}),
 
-	login: publicProcedure
+	login: publicCaptchaProcedure
 		.input(
 			z.object({
 				email: z.string().email(),
 				password: z.string(),
+				captchaToken: z.string().min(1),
 			}),
 		)
 		.mutation(async ({ input, ctx }) => {

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
+import { useCaptcha } from "~/lib/captcha/useCaptcha";
+import { useTranslations } from "~/lib/i18n";
 import { api } from "~/trpc/react";
 
 const signupSchema = z.object({
@@ -14,6 +16,7 @@ const signupSchema = z.object({
 });
 
 export default function SignupPage() {
+	const t = useTranslations();
 	const router = useRouter();
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
@@ -24,36 +27,52 @@ export default function SignupPage() {
 		name?: string;
 		general?: string;
 	}>({});
+	const { execute: executeCaptcha, isLoading: captchaLoading } = useCaptcha();
+	const [isAutoLoggingIn, setIsAutoLoggingIn] = useState(false);
 
 	const signupMutation = api.auth.signup.useMutation({
 		onSuccess: async () => {
 			// Auto-login after successful signup
-			const response = await signIn("credentials", {
-				email,
-				password,
-				redirect: false,
-			});
+			// Need to execute CAPTCHA again for login (tokens are single-use)
+			setIsAutoLoggingIn(true);
+			try {
+				const captchaToken = await executeCaptcha();
+				const response = await signIn("credentials", {
+					email,
+					password,
+					captchaToken,
+					redirect: false,
+				});
 
-			if (response?.ok) {
-				// Note: isLoading remains true during navigation to prevent duplicate clicks
-				toast.success("회원가입 성공!", {
-					description: "대시보드로 이동합니다.",
-				});
-				router.push("/dashboard");
-			} else {
+				if (response?.ok) {
+					// Note: isLoading remains true during navigation to prevent duplicate clicks
+					toast.success(t.captcha.signupSuccess, {
+						description: t.captcha.navigatingToDashboard,
+					});
+					router.push("/dashboard");
+				} else {
+					setErrors({
+						general: t.captcha.accountCreatedButLoginFailed,
+					});
+					toast.error(t.captcha.autoLoginFailed, {
+						description: t.captcha.accountCreatedButLoginFailed,
+					});
+				}
+			} catch (error) {
+				// CAPTCHA failed during auto-login
 				setErrors({
-					general:
-						"Account created but login failed. Please try logging in manually.",
+					general: t.captcha.accountCreatedButLoginFailed,
 				});
-				toast.error("자동 로그인 실패", {
-					description:
-						"Account created but login failed. Please try logging in manually.",
+				toast.error(t.captcha.autoLoginFailed, {
+					description: t.captcha.accountCreatedButLoginFailed,
 				});
+			} finally {
+				setIsAutoLoggingIn(false);
 			}
 		},
 		onError: (error) => {
 			setErrors({ general: error.message || "Failed to create account" });
-			toast.error("회원가입 실패", {
+			toast.error(t.captcha.signupFailed, {
 				description: error.message || "Failed to create account",
 			});
 		},
@@ -75,9 +94,24 @@ export default function SignupPage() {
 			return;
 		}
 
-		// Call signup mutation
-		signupMutation.mutate({ email, password, name });
+		try {
+			// Execute CAPTCHA proof-of-work
+			const captchaToken = await executeCaptcha();
+
+			// Call signup mutation
+			signupMutation.mutate({ email, password, name, captchaToken });
+		} catch (error) {
+			const errorMsg =
+				error instanceof Error ? error.message : "CAPTCHA verification failed";
+			setErrors({ general: errorMsg });
+			toast.error(t.captcha.verificationFailed, {
+				description: errorMsg,
+			});
+		}
 	};
+
+	const isFormLoading =
+		signupMutation.isPending || captchaLoading || isAutoLoggingIn;
 
 	return (
 		<div className="flex min-h-screen items-center justify-center bg-background px-4 py-12 sm:px-6 lg:px-8">
@@ -169,12 +203,14 @@ export default function SignupPage() {
 					<div>
 						<button
 							type="submit"
-							disabled={signupMutation.isPending}
+							disabled={isFormLoading}
 							className="group relative flex w-full justify-center rounded-md bg-primary px-3 py-2 font-semibold text-primary-foreground text-sm hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 						>
-							{signupMutation.isPending
-								? "Creating account..."
-								: "Create account"}
+							{captchaLoading
+								? t.captcha.verifying
+								: signupMutation.isPending
+									? t.captcha.creatingAccount
+									: "Create account"}
 						</button>
 					</div>
 				</form>

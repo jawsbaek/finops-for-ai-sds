@@ -1,13 +1,10 @@
-import { beforeAll, vi } from "vitest";
+import { vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
-// Mock environment variables for tests
-beforeAll(() => {
-	process.env.DATABASE_URL =
-		"postgresql://test:test@localhost:5432/test?schema=public";
-	process.env.NEXTAUTH_SECRET = "test-secret-key-for-testing";
-	process.env.NEXTAUTH_URL = "http://localhost:3000";
-});
+/**
+ * Environment variables are now set in vitest.env.ts
+ * which runs BEFORE any module imports, ensuring env.js validation passes.
+ */
 
 // Mock pino logger to suppress logs during tests
 vi.mock("pino", () => ({
