@@ -13,10 +13,16 @@ import { redeemCaptchaChallenge } from "~/server/api/captcha";
 import { rateLimits } from "~/server/api/ratelimit";
 
 const redeemRequestSchema = z.object({
-	token: z.string().min(1, "Token is required"),
-	solutions: z.array(z.array(z.number()), {
-		required_error: "Solutions are required",
-	}),
+	token: z.string().min(1, "Token is required").max(1000, "Token too long"),
+	solutions: z
+		.array(z.array(z.number()), {
+			required_error: "Solutions are required",
+		})
+		.max(1000, "Too many solutions") // Prevent DoS with massive arrays
+		.refine(
+			(solutions) => solutions.every((s) => s.length <= 100),
+			"Solution arrays too large",
+		),
 });
 
 export async function POST(request: NextRequest) {

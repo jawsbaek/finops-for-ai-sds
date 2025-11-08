@@ -108,6 +108,11 @@ export const messages = {
 		signupFailed: "회원가입 실패",
 		loginSuccess: "로그인 성공!",
 		signupSuccess: "회원가입 성공!",
+		navigatingToDashboard: "대시보드로 이동합니다.",
+		autoLoginFailed: "자동 로그인 실패",
+		accountCreatedButLoginFailed:
+			"계정이 생성되었지만 로그인에 실패했습니다. 수동으로 로그인해 주세요.",
+		loginError: "로그인 오류",
 	},
 } as const;
 

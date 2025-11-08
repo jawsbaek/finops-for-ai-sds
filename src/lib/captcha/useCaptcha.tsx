@@ -26,7 +26,7 @@
 "use client";
 
 import { Cap } from "@cap.js/widget";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "~/lib/i18n";
 
 interface UseCaptchaReturn {
@@ -110,6 +110,13 @@ export function useCaptcha(): UseCaptchaReturn {
 
 	const clearError = useCallback(() => {
 		setError(null);
+	}, []);
+
+	// Cleanup Cap instance on unmount to prevent memory leaks
+	useEffect(() => {
+		return () => {
+			capInstanceRef.current = null;
+		};
 	}, []);
 
 	return {

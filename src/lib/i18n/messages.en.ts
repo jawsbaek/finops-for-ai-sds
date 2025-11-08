@@ -153,5 +153,10 @@ export const messages: Messages = {
 		signupFailed: "Signup failed",
 		loginSuccess: "Login successful!",
 		signupSuccess: "Signup successful!",
+		navigatingToDashboard: "Navigating to dashboard...",
+		autoLoginFailed: "Auto-login failed",
+		accountCreatedButLoginFailed:
+			"Account created but login failed. Please try logging in manually.",
+		loginError: "Login error",
 	},
 } as const;

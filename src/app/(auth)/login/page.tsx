@@ -68,11 +68,15 @@ export default function LoginPage() {
 			toast.success(t.captcha.loginSuccess);
 			router.push("/dashboard");
 		} catch (error) {
-			console.error("Login error:", error);
+			// Client-side error logging (console is acceptable in client components)
+			// Server-side errors are logged via structured logger
+			if (process.env.NODE_ENV === "development") {
+				console.error("Login error:", error);
+			}
 			const errorMsg =
 				error instanceof Error ? error.message : "An unexpected error occurred";
 			setErrors({ general: errorMsg });
-			toast.error(t.captcha.loginFailed, {
+			toast.error(t.captcha.loginError, {
 				description: errorMsg,
 			});
 			setIsLoading(false);

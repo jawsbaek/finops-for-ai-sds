@@ -45,28 +45,24 @@ export default function SignupPage() {
 				if (response?.ok) {
 					// Note: isLoading remains true during navigation to prevent duplicate clicks
 					toast.success(t.captcha.signupSuccess, {
-						description: "대시보드로 이동합니다.",
+						description: t.captcha.navigatingToDashboard,
 					});
 					router.push("/dashboard");
 				} else {
 					setErrors({
-						general:
-							"Account created but login failed. Please try logging in manually.",
+						general: t.captcha.accountCreatedButLoginFailed,
 					});
-					toast.error("자동 로그인 실패", {
-						description:
-							"Account created but login failed. Please try logging in manually.",
+					toast.error(t.captcha.autoLoginFailed, {
+						description: t.captcha.accountCreatedButLoginFailed,
 					});
 				}
 			} catch (error) {
 				// CAPTCHA failed during auto-login
 				setErrors({
-					general:
-						"Account created but auto-login failed. Please log in manually.",
+					general: t.captcha.accountCreatedButLoginFailed,
 				});
-				toast.error("자동 로그인 실패", {
-					description:
-						"Account created but auto-login failed. Please log in manually.",
+				toast.error(t.captcha.autoLoginFailed, {
+					description: t.captcha.accountCreatedButLoginFailed,
 				});
 			}
 		},

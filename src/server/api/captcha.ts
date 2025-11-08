@@ -133,7 +133,19 @@ export async function redeemCaptchaChallenge(
 
 /**
  * Cleanup expired challenges and tokens
- * Should be called periodically (e.g., via cron)
+ *
+ * IMPORTANT: This function should be called periodically via a cron job or scheduled task
+ * to prevent the .cap-tokens directory from growing unbounded.
+ *
+ * Recommended schedule: Every 1 hour
+ *
+ * Implementation options:
+ * 1. Vercel Cron Jobs: https://vercel.com/docs/cron-jobs
+ * 2. Node-cron: https://www.npmjs.com/package/node-cron
+ * 3. External scheduler (GitHub Actions, AWS EventBridge, etc.)
+ *
+ * Without periodic cleanup, expired tokens will accumulate on disk, potentially
+ * causing storage issues and degraded performance over time.
  */
 export async function cleanupExpiredCaptchaTokens() {
 	const cap = getCapInstance();
