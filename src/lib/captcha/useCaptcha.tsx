@@ -119,7 +119,10 @@ export function useCaptcha(): UseCaptchaReturn {
 			// This releases WebAssembly module and associated resources
 			if (capInstanceRef.current && "dispose" in capInstanceRef.current) {
 				try {
-					// @ts-expect-error - Cap.js may not expose dispose in types
+					// Cap.js doesn't expose dispose() in TypeScript type definitions (as of @cap.js/widget v0.1.31)
+					// but the method exists at runtime for proper WebAssembly module cleanup.
+					// Without calling dispose(), the WASM module may remain in memory even after unmount.
+					// @ts-expect-error - dispose() exists at runtime but not in type definitions
 					capInstanceRef.current.dispose?.();
 				} catch (error) {
 					// Ignore disposal errors - instance will be GC'd anyway

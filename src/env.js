@@ -25,7 +25,11 @@ export const env = createEnv({
 		AWS_KMS_KEY_ID: z.string().optional(),
 
 		// Cron job security
-		CRON_SECRET: z.string().optional(),
+		// SECURITY: Required in production to prevent unauthorized cron job access
+		CRON_SECRET:
+			process.env.NODE_ENV === "production"
+				? z.string().min(32)
+				: z.string().optional(),
 
 		// Feature flags
 		ENABLE_COSTS_API: z.string().optional().default("false"), // "true" | "false"

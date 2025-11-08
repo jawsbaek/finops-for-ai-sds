@@ -18,6 +18,15 @@ import { cleanupExpiredCaptchaTokens } from "~/server/api/captcha";
 
 export async function POST(request: NextRequest) {
 	// Verify cron secret for security
+	// SECURITY: Defense in depth - check for undefined CRON_SECRET to prevent bypass attacks
+	if (!env.CRON_SECRET) {
+		logger.error("CRON_SECRET is not configured");
+		return NextResponse.json(
+			{ error: "Server misconfigured" },
+			{ status: 500 },
+		);
+	}
+
 	const authHeader = request.headers.get("authorization");
 	const expectedAuth = `Bearer ${env.CRON_SECRET}`;
 

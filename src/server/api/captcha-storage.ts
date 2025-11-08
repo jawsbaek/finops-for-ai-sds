@@ -68,17 +68,17 @@ const challengeStorage: ChallengeStorage = {
 	 */
 	async read(token: string): Promise<ChallengeData | null> {
 		try {
-			const record = await db.captchaToken.findUnique({
-				where: { token },
+			// SECURITY: Atomic expiration check to prevent TOCTOU race condition
+			// Query only returns non-expired records, eliminating time-gap between check and use
+			const record = await db.captchaToken.findFirst({
+				where: {
+					token,
+					type: "challenge",
+					expiresAt: { gte: new Date() }, // Only return non-expired
+				},
 			});
 
-			if (!record || record.type !== "challenge") {
-				return null;
-			}
-
-			// Check expiration
-			if (record.expiresAt < new Date()) {
-				await db.captchaToken.delete({ where: { token } });
+			if (!record) {
 				return null;
 			}
 
@@ -97,12 +97,17 @@ const challengeStorage: ChallengeStorage = {
 
 	/**
 	 * Delete challenge data
+	 *
+	 * Note: Prisma P2025 (record not found) errors are silently ignored because:
+	 * - delete() is idempotent - calling it multiple times should not fail
+	 * - A missing record achieves the desired state (record doesn't exist)
+	 * - This prevents race conditions when multiple processes try to delete the same token
 	 */
 	async delete(token: string): Promise<void> {
 		try {
 			await db.captchaToken.delete({ where: { token } });
 		} catch (error) {
-			// Ignore P2025 (record not found)
+			// Ignore P2025 (record not found) - deletion is idempotent
 			if (
 				!(
 					error &&
@@ -124,6 +129,9 @@ const challengeStorage: ChallengeStorage = {
 
 	/**
 	 * Delete expired challenges
+	 *
+	 * Note: deleteMany() never throws P2025 (record not found) errors.
+	 * It returns { count: 0 } when no records match, which is a valid success state.
 	 */
 	async deleteExpired(): Promise<void> {
 		try {
@@ -220,12 +228,17 @@ const tokenStorage: TokenStorage = {
 
 	/**
 	 * Delete solution token
+	 *
+	 * Note: Prisma P2025 (record not found) errors are silently ignored because:
+	 * - delete() is idempotent - calling it multiple times should not fail
+	 * - A missing record achieves the desired state (record doesn't exist)
+	 * - This prevents race conditions when multiple processes try to delete the same token
 	 */
 	async delete(token: string): Promise<void> {
 		try {
 			await db.captchaToken.delete({ where: { token } });
 		} catch (error) {
-			// Ignore P2025 (record not found)
+			// Ignore P2025 (record not found) - deletion is idempotent
 			if (
 				!(
 					error &&
@@ -247,6 +260,9 @@ const tokenStorage: TokenStorage = {
 
 	/**
 	 * Delete expired solution tokens
+	 *
+	 * Note: deleteMany() never throws P2025 (record not found) errors.
+	 * It returns { count: 0 } when no records match, which is a valid success state.
 	 */
 	async deleteExpired(): Promise<void> {
 		try {
