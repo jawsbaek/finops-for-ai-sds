@@ -8,10 +8,11 @@
 import Cap from "@cap.js/server";
 import { env } from "~/env";
 import { logger } from "~/lib/logger";
+import { cleanupExpiredTokens, databaseStorage } from "./captcha-storage";
 
 /**
  * Cap instance singleton
- * Uses file system state for storing challenges and tokens
+ * Uses PostgreSQL database for storing challenges and tokens (serverless-compatible)
  */
 let capInstance: Cap | null = null;
 
@@ -27,9 +28,19 @@ function getCapInstance(): Cap {
 		}
 
 		capInstance = new Cap({
-			// Use file system state (default)
-			// Alternative: Implement custom storage with database hooks
-			tokens_store_path: "./.cap-tokens",
+			// ✅ SERVERLESS-COMPATIBLE: Database storage for Vercel/AWS Lambda/etc.
+			//
+			// Uses PostgreSQL via Prisma to store CAPTCHA challenges and solutions.
+			// This ensures tokens persist across serverless function invocations.
+			//
+			// The databaseStorage implementation provides:
+			// - set(token, data, expiresMs): Store challenge or solution
+			// - get(token): Retrieve and validate token
+			// - delete(token): Remove used/invalid token
+			// - cleanup(): Remove expired tokens (called by cron)
+			//
+			// See: src/server/api/captcha-storage.ts for implementation details
+			storage: databaseStorage,
 		});
 	}
 	return capInstance;
@@ -113,8 +124,20 @@ export async function createCaptchaChallenge() {
 		challengeCount: 50, // Number of hashes to solve
 		challengeSize: 32, // Bytes per challenge
 		// Convert CAP_DIFFICULTY (iterations) to Cap.js difficulty level
+		//
+		// Cap.js uses a "difficulty level" that gets multiplied by 2000 internally
+		// to determine the actual number of SHA-256 hash iterations required.
+		//
 		// Formula: difficulty = iterations / 2000
-		// Example: 100000 iterations → difficulty level 50
+		// Reverse: iterations = difficulty × 2000
+		//
+		// Example conversions:
+		// - 100,000 iterations → difficulty level 50
+		// - 200,000 iterations → difficulty level 100
+		// - 50,000 iterations → difficulty level 25
+		//
+		// The division by 2000 converts our env variable (total iterations)
+		// into Cap.js's internal difficulty representation.
 		challengeDifficulty: Math.floor(env.CAP_DIFFICULTY / 2000),
 		expiresMs: 600000, // 10 minutes
 	});
@@ -144,20 +167,22 @@ export async function redeemCaptchaChallenge(
  * Cleanup expired challenges and tokens
  *
  * IMPORTANT: This function should be called periodically via a cron job or scheduled task
- * to prevent the .cap-tokens directory from growing unbounded.
+ * to prevent the database from accumulating stale CAPTCHA tokens.
  *
  * Recommended schedule: Every 1 hour
  *
- * Implementation options:
- * 1. Vercel Cron Jobs: https://vercel.com/docs/cron-jobs
- * 2. Node-cron: https://www.npmjs.com/package/node-cron
- * 3. External scheduler (GitHub Actions, AWS EventBridge, etc.)
+ * Implementation:
+ * - Deletes all CaptchaToken records where expiresAt < now()
+ * - Uses database index on expiresAt for efficient cleanup
+ * - Logs number of tokens removed
  *
- * Without periodic cleanup, expired tokens will accumulate on disk, potentially
- * causing storage issues and degraded performance over time.
+ * API endpoint: POST /api/cron/captcha-cleanup
+ * Vercel Cron: Configure in vercel.json or Vercel Dashboard
+ *
+ * Without periodic cleanup, expired tokens will accumulate in the database,
+ * potentially degrading query performance over time.
  */
 export async function cleanupExpiredCaptchaTokens() {
-	const cap = getCapInstance();
-	await cap.cleanup();
-	logger.info("CAPTCHA tokens cleanup completed");
+	// Use the cleanup function which deletes all expired tokens from the database
+	await cleanupExpiredTokens();
 }

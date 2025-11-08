@@ -286,3 +286,19 @@ model WeeklyReport {
   @@index([weekStart])
   @@map("weekly_reports")
 }
+
+// Cap.js CAPTCHA Token Storage (Serverless-Compatible)
+// Replaces file-based .cap-tokens storage for Vercel/AWS Lambda/etc.
+model CaptchaToken {
+  id        String   @id @default(cuid())
+  token     String   @unique // CAPTCHA token identifier
+  type      String // 'challenge' or 'solution'
+  data      Json // Challenge/solution data (varies by type)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Indexes for efficient queries and cleanup
+  @@index([expiresAt]) // For cleanup cron job
+  @@index([token, type]) // For lookups
+  @@map("captcha_tokens")
+}

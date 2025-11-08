@@ -115,6 +115,16 @@ export function useCaptcha(): UseCaptchaReturn {
 	// Cleanup Cap instance on unmount to prevent memory leaks
 	useEffect(() => {
 		return () => {
+			// Dispose Cap instance if it has a cleanup method
+			// This releases WebAssembly module and associated resources
+			if (capInstanceRef.current && "dispose" in capInstanceRef.current) {
+				try {
+					// @ts-expect-error - Cap.js may not expose dispose in types
+					capInstanceRef.current.dispose?.();
+				} catch (error) {
+					// Ignore disposal errors - instance will be GC'd anyway
+				}
+			}
 			capInstanceRef.current = null;
 		};
 	}, []);
