@@ -3,6 +3,8 @@ import type { DefaultSession, NextAuthConfig } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { z } from "zod";
 
+import { logger } from "~/lib/logger";
+import { verifyCaptchaToken } from "~/server/api/captcha";
 import { db } from "~/server/db";
 
 /**
@@ -31,21 +33,44 @@ export const authConfig = {
 			credentials: {
 				email: { label: "Email", type: "email" },
 				password: { label: "Password", type: "password" },
+				captchaToken: { label: "CAPTCHA Token", type: "text" },
 			},
 			async authorize(credentials) {
-				// Validate credentials
+				// Validate credentials including CAPTCHA token
 				const parsedCredentials = z
 					.object({
 						email: z.string().email(),
 						password: z.string().min(8),
+						captchaToken: z.string().min(1),
 					})
 					.safeParse(credentials);
 
 				if (!parsedCredentials.success) {
+					logger.warn(
+						{
+							email: credentials?.email,
+							hasPassword: !!credentials?.password,
+							hasCaptcha: !!credentials?.captchaToken,
+						},
+						"Invalid credentials format",
+					);
 					return null;
 				}
 
-				const { email, password } = parsedCredentials.data;
+				const { email, password, captchaToken } = parsedCredentials.data;
+
+				// Verify CAPTCHA token first (before expensive password check)
+				const isCaptchaValid = await verifyCaptchaToken(captchaToken);
+				if (!isCaptchaValid) {
+					logger.warn(
+						{
+							email,
+							tokenPrefix: captchaToken.slice(0, 10),
+						},
+						"CAPTCHA verification failed during login",
+					);
+					return null;
+				}
 
 				// Find user
 				const user = await db.user.findUnique({

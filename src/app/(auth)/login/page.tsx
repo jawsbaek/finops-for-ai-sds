@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
+import { useCaptcha } from "~/lib/captcha/useCaptcha";
 
 const loginSchema = z.object({
 	email: z.string().email("Invalid email address"),
@@ -21,6 +22,7 @@ export default function LoginPage() {
 		general?: string;
 	}>({});
 	const [isLoading, setIsLoading] = useState(false);
+	const { execute: executeCaptcha, isLoading: captchaLoading } = useCaptcha();
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -40,9 +42,13 @@ export default function LoginPage() {
 		}
 
 		try {
+			// Execute CAPTCHA proof-of-work
+			const captchaToken = await executeCaptcha();
+
 			const response = await signIn("credentials", {
 				email,
 				password,
+				captchaToken,
 				redirect: false,
 			});
 
@@ -61,13 +67,17 @@ export default function LoginPage() {
 			router.push("/dashboard");
 		} catch (error) {
 			console.error("Login error:", error);
-			setErrors({ general: "An unexpected error occurred" });
+			const errorMsg =
+				error instanceof Error ? error.message : "An unexpected error occurred";
+			setErrors({ general: errorMsg });
 			toast.error("로그인 실패", {
-				description: "An unexpected error occurred",
+				description: errorMsg,
 			});
 			setIsLoading(false);
 		}
 	};
+
+	const isFormLoading = isLoading || captchaLoading;
 
 	return (
 		<div className="flex min-h-screen items-center justify-center bg-background px-4 py-12 sm:px-6 lg:px-8">
@@ -140,10 +150,14 @@ export default function LoginPage() {
 					<div>
 						<button
 							type="submit"
-							disabled={isLoading}
+							disabled={isFormLoading}
 							className="group relative flex w-full justify-center rounded-md bg-primary px-3 py-2 font-semibold text-primary-foreground text-sm hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 						>
-							{isLoading ? "Signing in..." : "Sign in"}
+							{captchaLoading
+								? "Verifying security..."
+								: isLoading
+									? "Signing in..."
+									: "Sign in"}
 						</button>
 					</div>
 				</form>

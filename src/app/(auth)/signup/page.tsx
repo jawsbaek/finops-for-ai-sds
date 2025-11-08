@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
+import { useCaptcha } from "~/lib/captcha/useCaptcha";
 import { api } from "~/trpc/react";
 
 const signupSchema = z.object({
@@ -24,6 +25,7 @@ export default function SignupPage() {
 		name?: string;
 		general?: string;
 	}>({});
+	const { execute: executeCaptcha, isLoading: captchaLoading } = useCaptcha();
 
 	const signupMutation = api.auth.signup.useMutation({
 		onSuccess: async () => {
@@ -75,9 +77,23 @@ export default function SignupPage() {
 			return;
 		}
 
-		// Call signup mutation
-		signupMutation.mutate({ email, password, name });
+		try {
+			// Execute CAPTCHA proof-of-work
+			const captchaToken = await executeCaptcha();
+
+			// Call signup mutation
+			signupMutation.mutate({ email, password, name, captchaToken });
+		} catch (error) {
+			const errorMsg =
+				error instanceof Error ? error.message : "CAPTCHA verification failed";
+			setErrors({ general: errorMsg });
+			toast.error("보안 검증 실패", {
+				description: errorMsg,
+			});
+		}
 	};
+
+	const isFormLoading = signupMutation.isPending || captchaLoading;
 
 	return (
 		<div className="flex min-h-screen items-center justify-center bg-background px-4 py-12 sm:px-6 lg:px-8">
@@ -169,12 +185,14 @@ export default function SignupPage() {
 					<div>
 						<button
 							type="submit"
-							disabled={signupMutation.isPending}
+							disabled={isFormLoading}
 							className="group relative flex w-full justify-center rounded-md bg-primary px-3 py-2 font-semibold text-primary-foreground text-sm hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 						>
-							{signupMutation.isPending
-								? "Creating account..."
-								: "Create account"}
+							{captchaLoading
+								? "Verifying security..."
+								: signupMutation.isPending
+									? "Creating account..."
+									: "Create account"}
 						</button>
 					</div>
 				</form>
