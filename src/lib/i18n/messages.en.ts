@@ -141,4 +141,17 @@ export const messages: Messages = {
 		nameTooLong: "Name must be 100 characters or less",
 		reasonTooLong: "Reason must be 500 characters or less",
 	},
+
+	captcha: {
+		verifying: "Verifying security...",
+		verificationFailed: "Security verification failed. Please try again.",
+		verificationError: "An error occurred during CAPTCHA verification.",
+		tokenRequired: "CAPTCHA token is required",
+		signingIn: "Signing in...",
+		creatingAccount: "Creating account...",
+		loginFailed: "Login failed",
+		signupFailed: "Signup failed",
+		loginSuccess: "Login successful!",
+		signupSuccess: "Signup successful!",
+	},
 } as const;

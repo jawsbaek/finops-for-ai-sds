@@ -6,6 +6,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { useCaptcha } from "~/lib/captcha/useCaptcha";
+import { useTranslations } from "~/lib/i18n";
 import { api } from "~/trpc/react";
 
 const signupSchema = z.object({
@@ -15,6 +16,7 @@ const signupSchema = z.object({
 });
 
 export default function SignupPage() {
+	const t = useTranslations();
 	const router = useRouter();
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
@@ -38,7 +40,7 @@ export default function SignupPage() {
 
 			if (response?.ok) {
 				// Note: isLoading remains true during navigation to prevent duplicate clicks
-				toast.success("회원가입 성공!", {
+				toast.success(t.captcha.signupSuccess, {
 					description: "대시보드로 이동합니다.",
 				});
 				router.push("/dashboard");
@@ -55,7 +57,7 @@ export default function SignupPage() {
 		},
 		onError: (error) => {
 			setErrors({ general: error.message || "Failed to create account" });
-			toast.error("회원가입 실패", {
+			toast.error(t.captcha.signupFailed, {
 				description: error.message || "Failed to create account",
 			});
 		},
@@ -87,7 +89,7 @@ export default function SignupPage() {
 			const errorMsg =
 				error instanceof Error ? error.message : "CAPTCHA verification failed";
 			setErrors({ general: errorMsg });
-			toast.error("보안 검증 실패", {
+			toast.error(t.captcha.verificationFailed, {
 				description: errorMsg,
 			});
 		}
@@ -189,9 +191,9 @@ export default function SignupPage() {
 							className="group relative flex w-full justify-center rounded-md bg-primary px-3 py-2 font-semibold text-primary-foreground text-sm hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							{captchaLoading
-								? "Verifying security..."
+								? t.captcha.verifying
 								: signupMutation.isPending
-									? "Creating account..."
+									? t.captcha.creatingAccount
 									: "Create account"}
 						</button>
 					</div>

@@ -11,6 +11,7 @@ import { TRPCError, initTRPC } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
+import { getServerTranslations } from "~/lib/i18n";
 import { logger } from "~/lib/logger";
 import { auth } from "~/server/auth";
 import { db } from "~/server/db";
@@ -210,6 +211,8 @@ export const normalProcedure = protectedProcedure.use(
  * Note: captchaToken will be removed by the procedure's zod schema
  */
 const captchaMiddleware = t.middleware(async ({ ctx, next, getRawInput }) => {
+	const t = getServerTranslations();
+
 	// Get raw input from the request
 	const rawInput = await getRawInput();
 	const input = rawInput as { captchaToken?: string };
@@ -224,7 +227,7 @@ const captchaMiddleware = t.middleware(async ({ ctx, next, getRawInput }) => {
 
 		throw new TRPCError({
 			code: "BAD_REQUEST",
-			message: "CAPTCHA token is required",
+			message: t.captcha.tokenRequired,
 		});
 	}
 
@@ -242,7 +245,7 @@ const captchaMiddleware = t.middleware(async ({ ctx, next, getRawInput }) => {
 
 		throw new TRPCError({
 			code: "FORBIDDEN",
-			message: "보안 검증에 실패했습니다. 다시 시도해주세요.",
+			message: t.captcha.verificationFailed,
 		});
 	}
 

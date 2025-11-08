@@ -6,6 +6,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { useCaptcha } from "~/lib/captcha/useCaptcha";
+import { useTranslations } from "~/lib/i18n";
 
 const loginSchema = z.object({
 	email: z.string().email("Invalid email address"),
@@ -13,6 +14,7 @@ const loginSchema = z.object({
 });
 
 export default function LoginPage() {
+	const t = useTranslations();
 	const router = useRouter();
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
@@ -54,7 +56,7 @@ export default function LoginPage() {
 
 			if (response?.error) {
 				setErrors({ general: "Invalid email or password" });
-				toast.error("로그인 실패", {
+				toast.error(t.captcha.loginFailed, {
 					description: "Invalid email or password",
 				});
 				setIsLoading(false);
@@ -63,14 +65,14 @@ export default function LoginPage() {
 
 			// Redirect to dashboard on success
 			// Note: isLoading remains true during navigation to prevent duplicate clicks
-			toast.success("로그인 성공!");
+			toast.success(t.captcha.loginSuccess);
 			router.push("/dashboard");
 		} catch (error) {
 			console.error("Login error:", error);
 			const errorMsg =
 				error instanceof Error ? error.message : "An unexpected error occurred";
 			setErrors({ general: errorMsg });
-			toast.error("로그인 실패", {
+			toast.error(t.captcha.loginFailed, {
 				description: errorMsg,
 			});
 			setIsLoading(false);
@@ -154,9 +156,9 @@ export default function LoginPage() {
 							className="group relative flex w-full justify-center rounded-md bg-primary px-3 py-2 font-semibold text-primary-foreground text-sm hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							{captchaLoading
-								? "Verifying security..."
+								? t.captcha.verifying
 								: isLoading
-									? "Signing in..."
+									? t.captcha.signingIn
 									: "Sign in"}
 						</button>
 					</div>

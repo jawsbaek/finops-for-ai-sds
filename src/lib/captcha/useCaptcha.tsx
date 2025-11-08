@@ -27,7 +27,7 @@
 
 import { Cap } from "@cap.js/widget";
 import { useCallback, useState } from "react";
-import { env } from "~/env";
+import { useTranslations } from "~/lib/i18n";
 
 interface UseCaptchaReturn {
 	/**
@@ -66,6 +66,7 @@ interface UseCaptchaReturn {
  * @returns Object containing execute function, loading state, and error state
  */
 export function useCaptcha(): UseCaptchaReturn {
+	const t = useTranslations();
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -87,21 +88,19 @@ export function useCaptcha(): UseCaptchaReturn {
 			const result = await cap.solve();
 
 			if (!result.success || !result.token) {
-				throw new Error("CAPTCHA 검증에 실패했습니다.");
+				throw new Error(t.captcha.verificationFailed);
 			}
 
 			return result.token;
 		} catch (err) {
 			const errorMsg =
-				err instanceof Error
-					? err.message
-					: "CAPTCHA 검증 중 오류가 발생했습니다.";
+				err instanceof Error ? err.message : t.captcha.verificationError;
 			setError(errorMsg);
 			throw new Error(errorMsg);
 		} finally {
 			setIsLoading(false);
 		}
-	}, []);
+	}, [t]);
 
 	const clearError = useCallback(() => {
 		setError(null);

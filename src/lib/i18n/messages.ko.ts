@@ -95,6 +95,20 @@ export const messages = {
 		nameTooLong: "이름은 100자 이내로 입력해주세요",
 		reasonTooLong: "사유는 500자 이내로 입력해주세요",
 	},
+
+	// CAPTCHA messages
+	captcha: {
+		verifying: "보안 검증 중...",
+		verificationFailed: "보안 검증에 실패했습니다. 다시 시도해주세요.",
+		verificationError: "CAPTCHA 검증 중 오류가 발생했습니다.",
+		tokenRequired: "CAPTCHA token is required",
+		signingIn: "로그인 중...",
+		creatingAccount: "계정 생성 중...",
+		loginFailed: "로그인 실패",
+		signupFailed: "회원가입 실패",
+		loginSuccess: "로그인 성공!",
+		signupSuccess: "회원가입 성공!",
+	},
 } as const;
 
 // Extract the structure but allow different string values
