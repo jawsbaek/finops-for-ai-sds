@@ -55,6 +55,7 @@ model Team {
   members             TeamMember[]
   projects            Project[]
   organizationApiKeys OrganizationApiKey[] // ✅ Changed from singular to array
+  tokenUsage          TokenUsage[]
 
   @@index([ownerId])
   @@map("teams")
@@ -128,6 +129,7 @@ model Project {
   members    ProjectMember[]
   apiKeys    ApiKey[] // Deprecated: Usage API project keys (to be reviewed after migration)
   costData   CostData[]
+  tokenUsage TokenUsage[]
   metrics    ProjectMetrics?
   costAlerts CostAlert[]
 
@@ -285,6 +287,72 @@ model WeeklyReport {
 
   @@index([weekStart])
   @@map("weekly_reports")
+}
+
+// Token Usage Data from OpenAI Usage API
+// Stores detailed token usage metrics for analysis and cost calculation
+model TokenUsage {
+  id        String @id @default(cuid())
+  projectId String @map("project_id")
+  teamId    String @map("team_id")
+
+  // Provider information
+  provider       String // 'openai', 'anthropic', etc.
+  organizationId String? @map("organization_id") // Provider's org ID
+  aiProjectId    String? @map("ai_project_id") // Provider's project ID (can be null/empty)
+
+  // Model and request information
+  model            String // e.g., 'gpt-4-0613', 'gpt-3.5-turbo'
+  numModelRequests Int    @map("num_model_requests") // Number of API requests
+
+  // Token breakdown
+  inputTokens         Int @map("input_tokens") // Total input tokens
+  outputTokens        Int @map("output_tokens") // Total output tokens
+  inputCachedTokens   Int @default(0) @map("input_cached_tokens")
+  inputUncachedTokens Int @default(0) @map("input_uncached_tokens")
+
+  // Text tokens
+  inputTextTokens       Int @default(0) @map("input_text_tokens")
+  outputTextTokens      Int @default(0) @map("output_text_tokens")
+  inputCachedTextTokens Int @default(0) @map("input_cached_text_tokens")
+
+  // Audio tokens
+  inputAudioTokens       Int @default(0) @map("input_audio_tokens")
+  inputCachedAudioTokens Int @default(0) @map("input_cached_audio_tokens")
+  outputAudioTokens      Int @default(0) @map("output_audio_tokens")
+
+  // Image tokens
+  inputImageTokens       Int @default(0) @map("input_image_tokens")
+  inputCachedImageTokens Int @default(0) @map("input_cached_image_tokens")
+  outputImageTokens      Int @default(0) @map("output_image_tokens")
+
+  // Time bucket information
+  bucketStartTime DateTime @map("bucket_start_time")
+  bucketEndTime   DateTime @map("bucket_end_time")
+  date            DateTime @db.Date // Derived from bucketStartTime for easier querying
+
+  // API tracking
+  apiVersion String @default("usage_completions_v1") @map("api_version") // 'usage_completions_v1'
+
+  // Metadata
+  userId      String? @map("user_id") // OpenAI user_id (if available)
+  apiKeyId    String? @map("api_key_id") // OpenAI api_key_id (if available)
+  batch       String? // Batch identifier (if applicable)
+  serviceTier String? @map("service_tier") // Service tier (if applicable)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  // Deduplication: same project, time bucket, model, and provider
+  @@unique([projectId, bucketStartTime, bucketEndTime, model, provider, aiProjectId], name: "unique_token_usage_bucket")
+  @@index([projectId, date])
+  @@index([teamId, date])
+  @@index([date])
+  @@index([model])
+  @@index([provider])
+  @@map("token_usage")
 }
 
 // Cap.js CAPTCHA Token Storage (Serverless-Compatible)

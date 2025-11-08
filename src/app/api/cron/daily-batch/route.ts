@@ -14,13 +14,13 @@ import pino from "pino";
 import { env } from "~/env";
 import { sendCostCollectionFailureNotification } from "~/lib/services/email/notification";
 import {
-	collectDailyCosts,
-	storeCostData,
-} from "~/lib/services/openai/cost-collector";
-import {
 	collectDailyCostsV2,
 	storeCostDataV2,
 } from "~/lib/services/openai/cost-collector-v2";
+import {
+	collectDailyTokenUsage,
+	storeTokenUsage,
+} from "~/lib/services/openai/usage-collector";
 import { db } from "~/server/db";
 
 const logger = pino({ name: "cron-daily-batch" });
@@ -93,90 +93,115 @@ export async function GET(request: Request) {
 			throw createError;
 		}
 
-		// Step 3: Collect costs from OpenAI
-		// Feature flag: Use Costs API (v2) if ENABLE_COSTS_API is true, otherwise Usage API (v1)
-		const enableCostsAPI = env.ENABLE_COSTS_API === "true";
+		// Step 3: Collect costs and usage from OpenAI
+		// Collect both Costs API (v2) and Usage Completions API data
+		logger.info("Collecting daily costs and token usage");
 
-		logger.info({ enableCostsAPI }, "Collecting daily costs");
-
-		let recordsCreated = 0;
+		let costRecordsCreated = 0;
+		let usageRecordsCreated = 0;
 
 		try {
-			if (enableCostsAPI) {
-				// Costs API (v2) - Team-based collection
-				const activeTeams = await db.team.findMany({
-					where: {
-						organizationApiKeys: {
-							some: {
-								isActive: true,
-							},
+			// Get teams with Admin API keys
+			const activeTeams = await db.team.findMany({
+				where: {
+					organizationApiKeys: {
+						some: {
+							isActive: true,
 						},
 					},
-					select: {
-						id: true,
-						name: true,
-					},
-				});
+				},
+				select: {
+					id: true,
+					name: true,
+				},
+			});
 
+			logger.info(
+				{ teamCount: activeTeams.length },
+				"Found active teams with Admin API keys",
+			);
+
+			const allCostData: Awaited<ReturnType<typeof collectDailyCostsV2>> = [];
+			const allUsageData: Awaited<ReturnType<typeof collectDailyTokenUsage>> =
+				[];
+
+			// Collect both costs and usage for each team
+			for (const team of activeTeams) {
+				try {
+					// Collect costs (will return empty if 404)
+					const teamCosts = await collectDailyCostsV2(team.id);
+					allCostData.push(...teamCosts);
+					logger.info(
+						{
+							teamId: team.id,
+							teamName: team.name,
+							costRecordCount: teamCosts.length,
+						},
+						"Collected costs for team",
+					);
+				} catch (costError) {
+					logger.error(
+						{
+							teamId: team.id,
+							teamName: team.name,
+							error:
+								costError instanceof Error
+									? costError.message
+									: String(costError),
+						},
+						"Failed to collect costs for team",
+					);
+					// Continue with usage collection
+				}
+
+				try {
+					// Collect token usage
+					const teamUsage = await collectDailyTokenUsage(team.id);
+					allUsageData.push(...teamUsage);
+					logger.info(
+						{
+							teamId: team.id,
+							teamName: team.name,
+							usageRecordCount: teamUsage.length,
+						},
+						"Collected token usage for team",
+					);
+				} catch (usageError) {
+					logger.error(
+						{
+							teamId: team.id,
+							teamName: team.name,
+							error:
+								usageError instanceof Error
+									? usageError.message
+									: String(usageError),
+						},
+						"Failed to collect token usage for team",
+					);
+					// Continue processing other teams
+				}
+			}
+
+			// Store all collected cost data
+			if (allCostData.length > 0) {
+				costRecordsCreated = await storeCostDataV2(allCostData);
 				logger.info(
-					{ teamCount: activeTeams.length },
-					"Found active teams with Admin API keys",
+					{ recordsCreated: costRecordsCreated },
+					"Costs API data stored successfully",
 				);
-
-				const allCostData: Awaited<ReturnType<typeof collectDailyCostsV2>> = [];
-
-				// Collect costs for each team
-				for (const team of activeTeams) {
-					try {
-						const teamCosts = await collectDailyCostsV2(team.id);
-						allCostData.push(...teamCosts);
-						logger.info(
-							{
-								teamId: team.id,
-								teamName: team.name,
-								recordCount: teamCosts.length,
-							},
-							"Collected costs for team",
-						);
-					} catch (teamError) {
-						logger.error(
-							{
-								teamId: team.id,
-								teamName: team.name,
-								error:
-									teamError instanceof Error
-										? teamError.message
-										: String(teamError),
-							},
-							"Failed to collect costs for team",
-						);
-						// Continue processing other teams
-					}
-				}
-
-				// Store all collected data
-				if (allCostData.length > 0) {
-					recordsCreated = await storeCostDataV2(allCostData);
-					logger.info(
-						{ recordsCreated },
-						"Costs API (v2) data stored successfully",
-					);
-				} else {
-					logger.info("No Costs API data to store");
-				}
 			} else {
-				// Usage API (v1) - Project-based collection (legacy)
-				const costData = await collectDailyCosts();
+				logger.info("No cost data to store (Costs API may have returned 404)");
+			}
 
-				if (costData.length > 0) {
-					recordsCreated = await storeCostData(costData);
-					logger.info(
-						{ recordsCreated },
-						"Usage API (v1) data stored successfully",
-					);
-				} else {
-					logger.info("No Usage API data to store");
-				}
+			// Store all collected usage data
+			if (allUsageData.length > 0) {
+				usageRecordsCreated = await storeTokenUsage(allUsageData);
+				logger.info(
+					{ recordsCreated: usageRecordsCreated },
+					"Token usage data stored successfully",
+				);
+			} else {
+				logger.info("No token usage data to store");
 			}
 		} catch (collectionError) {
 			// Send notification on failure but don't throw
@@ -210,16 +235,22 @@ export async function GET(request: Request) {
 		const duration = Date.now() - startTime;
 
 		logger.info(
-			{ duration, recordsCreated, date: today },
+			{
+				duration,
+				costRecordsCreated,
+				usageRecordsCreated,
+				date: today,
+			},
 			"Cron job completed successfully",
 		);
 
 		return NextResponse.json({
 			success: true,
-			message: "Cost collection completed",
+			message: "Cost and usage collection completed",
 			date: today,
-			apiVersion: enableCostsAPI ? "costs_v1" : "usage_v1",
-			recordsCreated,
+			costRecordsCreated,
+			usageRecordsCreated,
+			totalRecordsCreated: costRecordsCreated + usageRecordsCreated,
 			durationMs: duration,
 		});
 	} catch (error) {

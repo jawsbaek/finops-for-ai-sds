@@ -123,6 +123,20 @@ async function fetchOpenAICosts(
 		});
 
 		if (!response.ok) {
+			// Handle 404 as "no cost data available" - return empty response
+			if (response.status === 404) {
+				logger.warn(
+					{ status: 404, url: url.toString() },
+					"Costs API returned 404 - treating as no cost data (organization may not have access to Costs API)",
+				);
+				return {
+					object: "page",
+					data: [],
+					has_more: false,
+					next_page: null,
+				};
+			}
+
 			const errorText = await response.text();
 			throw new Error(
 				`OpenAI Costs API error (${response.status}): ${errorText}`,
